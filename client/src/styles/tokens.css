@@ -1,0 +1,50 @@
+/* Design tokens - the ONLY place colour values are defined. Change them here to re-theme the app. */
+:root {
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #eff4ff;
+  --indigo: #4f46e5;
+  --indigo-soft: #eef2ff;
+  --success: #10b981;
+  --success-strong: #047857;
+  --success-soft: #ecfdf5;
+  --warning: #f59e0b;
+  --warning-strong: #b45309;
+  --warning-soft: #fffbeb;
+  --danger: #ef4444;
+  --danger-strong: #b91c1c;
+  --danger-soft: #fef2f2;
+
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --hover: #f1f5f9;
+  --overlay: rgba(15, 23, 42, 0.45);
+
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* type scale */
+  --fs-page-title: 1.5rem;
+  --fs-section: 1.125rem;
+  --fs-card: 1rem;
+  --fs-body: 0.9375rem;
+  --fs-label: 0.8125rem;
+  --fs-meta: 0.8125rem;
+  --fs-help: 0.75rem;
+
+  /* spacing, radius, shadow */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+  --radius-sm: 6px; --radius: 10px; --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.18);
+
+  --sidebar-w: 256px;
+  --sidebar-w-collapsed: 72px;
+  --header-h: 60px;
+  --tap: 44px; /* minimum touch target */
+}

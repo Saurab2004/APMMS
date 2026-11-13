@@ -1,0 +1,11 @@
+{
+  "name": "apmms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "APMMS - build and start both parts with one command each (used by hosting services)",
+  "scripts": {
+    "build": "npm install --prefix client --include=dev && npm run build --prefix client && npm install --prefix server",
+    "start": "npm start --prefix server"
+  },
+  "engines": { "node": ">=18.18" }
+}
