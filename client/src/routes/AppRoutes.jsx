@@ -41,7 +41,10 @@ import { AccountPage, ProfilePage, SettingsPage } from '../pages/shared/AccountF
 
 import CoordinatorDashboard from '../pages/coordinator/CoordinatorDashboard.jsx';
 import UsersPage from '../pages/coordinator/UsersPage.jsx';
-import InstitutionsPage from '../pages/coordinator/InstitutionsPage.jsx';
+import PlatformLayout, { PlatformGuard } from '../pages/platform/PlatformLayout.jsx';
+import { PlatformChangePassword, PlatformSetup } from '../pages/platform/PlatformAuthPages.jsx';
+import { PlatformInstitutionDetail, PlatformInstitutions, PlatformOverview } from '../pages/platform/PlatformPages.jsx';
+import { PlatformAccount, PlatformAdmins, PlatformAudit, PlatformCoordinators, PlatformHealth, PlatformSettings } from '../pages/platform/PlatformPages2.jsx';
 import { AcademicStructurePage, DepartmentsPage } from '../pages/coordinator/AcademicPages.jsx';
 import GroupsAdminPage from '../pages/coordinator/GroupsAdminPage.jsx';
 import { CoordinatorProjectsPage, SupervisorAssignmentPage } from '../pages/coordinator/ProjectPages.jsx';
@@ -132,12 +135,30 @@ export default function AppRoutes() {
         </Route>
       </Route>
 
+      {/* Platform admin console (website owner): separate accounts and session from every institution */}
+      <Route path="/platform/setup" element={<PlatformSetup />} />
+      <Route path="/platform/login" element={<Navigate to="/login" replace state={{ role: 'platform' }} />} />
+      <Route element={<PlatformGuard />}>
+        <Route path="/platform/change-password" element={<PlatformChangePassword />} />
+        <Route path="/platform" element={<PlatformLayout />}>
+          <Route index element={<PlatformOverview />} />
+          <Route path="institutions" element={<PlatformInstitutions />} />
+          <Route path="institutions/:id" element={<PlatformInstitutionDetail />} />
+          <Route path="coordinators" element={<PlatformCoordinators />} />
+          <Route path="admins" element={<PlatformAdmins />} />
+          <Route path="audit" element={<PlatformAudit />} />
+          <Route path="health" element={<PlatformHealth />} />
+          <Route path="settings" element={<PlatformSettings />} />
+          <Route path="account" element={<PlatformAccount />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Route>
+
       <Route element={<ProtectedRoute roles={['coordinator']} />}>
         <Route path="/coordinator" element={<AppLayout />}>
           <Route index element={<CoordinatorDashboard />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="institutions" element={<InstitutionsPage />} />
           <Route path="departments" element={<DepartmentsPage />} />
           <Route path="academic" element={<AcademicStructurePage />} />
           <Route path="groups" element={<GroupsAdminPage />} />

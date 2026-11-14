@@ -25,7 +25,9 @@ Indexes: unique email / student ID; `activeMemberIds`; `members.user`; project/s
 
 New collection **`institutions`**: `name`, `nameKey` (lower-case, duplicate check), `type`, `status` (`pending`, `approved`, `rejected`, `suspended`, `deleted`), `statusNote`, `decidedAt/By`, `deletedAt`, `purgeAt`.
 
-**Every other collection now has `institution`** (ref to `institutions`, indexed). A Mongoose plugin adds it, stamps it on every new document and adds it to every find/count/update/delete/aggregate made while handling a logged-in request, so controllers cannot forget the filter. `users.isPlatformOwner` marks who approves institutions.
+**Every other collection now has `institution`** (ref to `institutions`, indexed). A Mongoose plugin adds it, stamps it on every new document and adds it to every find/count/update/delete/aggregate made while handling a logged-in request, so controllers cannot forget the filter. 
+
+**Platform collections (no `institution` field):** `platformadmins` (the website owner's accounts: name, unique email, passwordHash, `isActive`, `isFounder`, `mustChangePassword`, `tokenVersion`, lock fields), `platformaudits` (who did what in the admin console) and `platformsettings` (key/value switches such as `allowInstitutionRegistration`, `loginNotice`, and the `setupDone` marker). An institution can be suspended, deleted or erased without touching them. The old `users.isPlatformOwner` flag was removed (the migration deletes it).
 
 Uniqueness is now **per institution**: department name and code, term name, student ID and the settings key (compound indexes with `institution`). Email stays unique across the whole platform. The server drops the old global indexes and moves old records into "Default Institution" at start-up (`server/services/migration.js`, safe to run repeatedly).
 

@@ -1,6 +1,6 @@
 # Testing guide
 
-## Automated backend tests (37)
+## Automated backend tests (45)
 ```
 cd server
 npm test
@@ -13,7 +13,13 @@ npm test
 
 ## Institutions (new)
 
-`server/tests/institutions.test.js` (10 tests): institution sign-up and pending state; platform-owner approval/rejection; students/supervisors joining the chosen institution; **isolation** of users, departments, settings, rubrics, audit logs, analytics, groups, join codes, projects and supervisor assignment between two institutions; suspension blocking existing sessions; institution self-deletion (blocked at once, restore, grace-period purge, erase now, uploaded files removed from disk); first-time platform setup with and without the setup code; migration of an old database into "Default Institution".
+`server/tests/institutions.test.js` (11 tests): institution sign-up and automatic activation after email verification; platform-owner suspend/reject; students/supervisors joining the chosen institution; **isolation** of users, departments, settings, rubrics, audit logs, analytics, groups, join codes, projects and supervisor assignment between two institutions; suspension blocking existing sessions; institution self-deletion (blocked at once, restore, grace-period purge, erase now, uploaded files removed from disk); first-time platform setup with and without the setup code; migration of an old database into "Default Institution".
+
+## Platform admin console (new)
+
+`server/tests/platform.test.js` (9 tests): first-admin setup (once only; production needs the setup code), admin login separate from institution login (no session crosses over, lock after 5 wrong passwords), adding admins (temporary password, forced change, deactivate/reactivate, founder protected, email cannot clash with an institution account), counts without exposing student data, creating institutions, coordinator help actions (reset password, deactivate, resend/verify email), rename/suspend/restore, platform settings, audit log and health (no secrets), admin forgot-password.
+
+Browser check (Playwright, optional): log in at *Login > Platform admin login*, open every console page, add an institution and an admin, change a temporary password.
 
 ## Email verification / deletion / guide (new)
 

@@ -1,6 +1,6 @@
 // Permanently erases one institution: all its records (every collection) and its uploaded files.
 // Only used after a coordinator deleted their institution (and the grace period passed) or chose "erase now",
-// or when the platform owner purges it. Nothing else in the app ever hard-deletes records.
+// or when a platform admin purges it. Nothing else in the app ever hard-deletes records.
 import mongoose from 'mongoose';
 import { Institution } from '../models/index.js';
 import { removeFile } from './storage.js';

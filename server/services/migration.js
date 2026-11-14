@@ -4,7 +4,7 @@
 //   1. old "unique across everything" indexes are replaced by "unique inside one institution" ones
 //   2. records without an institution are moved into ONE institution named "Default Institution"
 //      (change the name later in the database if you like) so existing users keep seeing their data
-//   3. the earliest active coordinator becomes the platform owner (the person who approves new institutions)
+//   3. institutions still "pending" whose coordinator has verified the email are activated
 import mongoose from 'mongoose';
 import { Institution, User } from '../models/index.js';
 import { runUnscoped } from '../utils/tenant.js';
@@ -35,12 +35,15 @@ export async function migrateToInstitutions({ log = console.log } = {}) {
       log(`[migrate] moved ${moved} existing records into "${inst.name}"`);
     }
 
-    if (!(await User.exists({ isPlatformOwner: true }))) {
-      const first = await User.findOne({ role: 'coordinator', isActive: true, approvalStatus: { $ne: 'rejected' } }).sort({ createdAt: 1 });
-      if (first) {
-        await User.collection.updateOne({ _id: first._id }, { $set: { isPlatformOwner: true } });
-        log(`[migrate] ${first.email} is now the platform owner (approves new institutions)`);
-      }
+    // The old "platform owner" coordinator flag is gone: the website owner now has a separate Platform Admin account.
+    await User.collection.updateMany({ isPlatformOwner: { $exists: true } }, { $unset: { isPlatformOwner: '' } });
+    // Institutions that were waiting for approval are activated once their coordinator has verified the email.
+    for (const inst of await Institution.find({ status: 'pending' })) {
+      const c = await User.collection.findOne({ institution: inst._id, role: 'coordinator', emailVerified: true, approvalStatus: 'pending' });
+      if (!c) continue;
+      await Institution.updateOne({ _id: inst._id }, { $set: { status: 'approved', decidedAt: new Date(), statusNote: 'Activated after email verification' } });
+      await User.collection.updateOne({ _id: c._id }, { $set: { approvalStatus: 'approved', isActive: true } });
+      log(`[migrate] activated "${inst.name}" (its coordinator had verified the email)`);
     }
   });
 }

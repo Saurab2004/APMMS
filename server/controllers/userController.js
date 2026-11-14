@@ -1,4 +1,4 @@
-import { User, Department, AcademicTerm, Project, ProjectGroup } from '../models/index.js';
+import { User, Department, AcademicTerm, Project, ProjectGroup, PlatformAdmin } from '../models/index.js';
 import { ROLES } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, parsePage, pageMeta, parseSort, escapeRegex, isId, generateTempPassword, passwordProblem } from '../utils/helpers.js';
@@ -56,7 +56,7 @@ export const getUser = asyncHandler(async (req, res) => {
 export const createUser = asyncHandler(async (req, res) => {
   const { name, email, role, departmentId, termId, studentId, phone, designation, maxProjects, password } = req.body;
   if (!CREATABLE_ROLES.includes(role)) throw new AppError('Choose student, supervisor or coordinator. External evaluators are created from External Evaluators.', 422, { role: 'Invalid role' });
-  if (await User.exists({ email })) throw new AppError('A user with this email already exists', 409, { email: 'Already in use' });
+  if ((await User.exists({ email })) || (await PlatformAdmin.exists({ email }))) throw new AppError('A user with this email already exists', 409, { email: 'Already in use' });
   if (role === 'student') {
     if (!studentId) throw new AppError('Student ID is required for students', 422, { studentId: 'Required' });
     if (!departmentId) throw new AppError('Department is required for students', 422, { departmentId: 'Required' });

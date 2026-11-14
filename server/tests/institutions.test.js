@@ -1,7 +1,7 @@
-// Multi-institution workspaces: sign-up, platform-owner approval, and - most important - isolation.
+// Multi-institution workspaces: sign-up, automatic activation, platform-admin control, and - most important - isolation.
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { startTestServer, stopTestServer, Client, loggedIn, latestToken, outbox } from './helpers.js';
+import { startTestServer, stopTestServer, Client, loggedIn, latestToken, outbox, adminLoggedIn } from './helpers.js';
 import { User, Institution, Project, Department } from '../models/index.js';
 import { runUnscoped } from '../utils/tenant.js';
 
@@ -14,47 +14,46 @@ const S = {};
 const verify = (email) => anon().post('/api/auth/verify-email', { token: latestToken(email) });
 const opts = async () => (await anon().get('/api/auth/registration-options')).body.data;
 
-test('a new coordinator registers an institution; it waits for the platform owner', async () => {
+test('a new coordinator registers an institution; it activates itself when the email is verified', async () => {
   const before = await opts();
   assert.deepEqual(before.institutions.map((i) => i.name), ['Demo University']);
-  assert.equal(before.platform.needsSetup, false);
+  assert.equal(before.platform.allowInstitutionRegistration, true);
 
   const r = await anon().post('/api/auth/register', { name: 'Dr. Beta Boss', email: 'beta@beta.test', password: PW, role: 'coordinator', institutionName: 'Beta College', institutionType: 'college', departmentName: 'Computer Science & Engineering' });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.data.pending, true);
   assert.equal(r.body.data.user, undefined, 'no instant login');
-  // not listed for students until approved
+  // not listed for students until the email is verified
   assert.deepEqual((await opts()).institutions.map((i) => i.name), ['Demo University']);
+  const early = await anon().post('/api/auth/login', { email: 'beta@beta.test', password: PW, role: 'coordinator' });
+  assert.equal(early.status, 403, 'cannot log in before verifying');
 
-  // verified email alone is not enough
+  // verifying the email activates the institution: nobody from another institution is involved
   assert.equal((await verify('beta@beta.test')).status, 200);
   const login = await anon().post('/api/auth/login', { email: 'beta@beta.test', password: PW, role: 'coordinator' });
-  assert.equal(login.status, 403);
-  assert.match(login.body.message, /platform administrator/);
+  assert.equal(login.status, 200, JSON.stringify(login.body));
   // a copy-cat name is refused
   assert.equal((await anon().post('/api/auth/register', { name: 'Copy Cat', email: 'x@x.test', password: PW, role: 'coordinator', institutionName: 'BETA COLLEGE' })).status, 409);
 });
 
-test('only the platform owner can list and decide institutions', async () => {
-  S.owner = await loggedIn('coordinator@apmms.test');
+test('only a platform admin can list and decide institutions; a coordinator never touches another institution', async () => {
+  S.owner = await loggedIn('coordinator@apmms.test'); // the Demo University coordinator
+  S.admin = await adminLoggedIn();
   S.aliceC = await loggedIn('alice@apmms.test');
-  assert.equal((await S.aliceC.get('/api/institutions')).status, 403);
-  const list = await S.owner.get('/api/institutions?status=pending');
+  assert.equal((await S.aliceC.get('/api/platform/institutions')).status, 401, 'an institution user has no platform access');
+  assert.equal((await S.owner.get('/api/platform/institutions')).status, 401, 'not even a coordinator');
+  assert.equal((await S.admin.get('/api/platform/institutions?status=pending')).body.data.length, 0, 'nothing waits for approval');
+  const list = await S.admin.get('/api/platform/institutions?status=approved');
   assert.equal(list.status, 200);
-  assert.equal(list.body.data.length, 1);
-  const beta = list.body.data[0];
-  assert.equal(beta.name, 'Beta College');
+  const beta = list.body.data.find((i) => i.name === 'Beta College');
+  assert.ok(beta, 'Beta College is already active');
   assert.equal(beta.coordinators[0].email, 'beta@beta.test');
-  assert.ok((await S.owner.get('/api/notifications')).body.data.some((n) => n.title === 'New institution waiting for approval'));
-  // the owner cannot suspend their own institution
-  const mine = (await S.owner.get('/api/institutions')).body.data.find((i) => i.isMine);
-  assert.equal((await S.owner.post(`/api/institutions/${mine._id}/decision`, { decision: 'suspend' })).status, 409);
-  // pending -> cannot be "reactivated"
-  assert.equal((await S.owner.post(`/api/institutions/${beta._id}/decision`, { decision: 'reactivate' })).status, 409);
-  assert.equal((await S.owner.post(`/api/institutions/${beta._id}/decision`, { decision: 'approve' })).status, 200);
+  // an active institution cannot be "reactivated"
+  assert.equal((await S.admin.post(`/api/platform/institutions/${beta._id}/decision`, { decision: 'reactivate' })).status, 409);
   S.betaId = beta._id;
   S.betaC = await loggedIn('beta@beta.test', 'coordinator', PW);
-  assert.equal((await S.betaC.get('/api/institutions')).status, 403, 'an approved coordinator is not a platform owner');
+  assert.equal((await S.betaC.get('/api/platform/institutions')).status, 401, 'an institution coordinator is not a platform admin');
+  assert.equal((await S.betaC.post(`/api/platform/institutions/${beta._id}/decision`, { decision: 'suspend' })).status, 401, 'and cannot decide about institutions');
   assert.equal((await S.betaC.get('/api/auth/me')).body.data.user.institution.name, 'Beta College');
   assert.deepEqual((await opts()).institutions.map((i) => i.name).sort(), ['Beta College', 'Demo University']);
 });
@@ -179,7 +178,7 @@ test('suspending an institution blocks its people at once; reactivating restores
   S.demoInst = (await S.owner.get('/api/auth/me')).body.data.user.institution._id;
   const betaStudent = await loggedIn('sid@beta.test', 'student', PW);
   assert.equal((await betaStudent.get('/api/auth/me')).status, 200);
-  assert.equal((await S.owner.post(`/api/institutions/${S.betaId}/decision`, { decision: 'suspend', note: 'test' })).status, 200);
+  assert.equal((await S.admin.post(`/api/platform/institutions/${S.betaId}/decision`, { decision: 'suspend', note: 'test' })).status, 200);
   assert.equal((await betaStudent.get('/api/auth/me')).status, 403, 'existing session blocked');
   assert.equal((await S.betaC.get('/api/users')).status, 403);
   const login = await anon().post('/api/auth/login', { email: 'sid@beta.test', password: PW, role: 'student' });
@@ -188,15 +187,16 @@ test('suspending an institution blocks its people at once; reactivating restores
   assert.deepEqual((await opts()).institutions.map((i) => i.name), ['Demo University'], 'not offered for sign-up while suspended');
   // the other institution is unaffected
   assert.equal((await (await loggedIn('alice@apmms.test')).get('/api/auth/me')).status, 200);
-  assert.equal((await S.owner.post(`/api/institutions/${S.betaId}/decision`, { decision: 'reactivate' })).status, 200);
+  assert.equal((await S.admin.post(`/api/platform/institutions/${S.betaId}/decision`, { decision: 'reactivate' })).status, 200);
   assert.equal((await betaStudent.get('/api/auth/me')).status, 200);
 });
 
-test('rejecting an institution request keeps it out', async () => {
+test('a platform admin can reject an institution that has not verified its email; verifying later does not revive it', async () => {
   await anon().post('/api/auth/register', { name: 'Nope', email: 'nope@nope.test', password: PW, role: 'coordinator', institutionName: 'Nope Institute' });
-  await verify('nope@nope.test');
-  const nope = (await S.owner.get('/api/institutions?status=pending')).body.data[0];
-  assert.equal((await S.owner.post(`/api/institutions/${nope._id}/decision`, { decision: 'reject', note: 'Cannot verify' })).status, 200);
+  const nope = (await S.admin.get('/api/platform/institutions?status=pending')).body.data[0];
+  const token = latestToken('nope@nope.test'); // taken now: the rejection email below would become the "latest" mail
+  assert.equal((await S.admin.post(`/api/platform/institutions/${nope._id}/decision`, { decision: 'reject', note: 'Cannot verify' })).status, 200);
+  assert.equal((await anon().post('/api/auth/verify-email', { token })).status, 200);
   const login = await anon().post('/api/auth/login', { email: 'nope@nope.test', password: PW, role: 'coordinator' });
   assert.equal(login.status, 403);
   // the name can be requested again after a rejection
@@ -214,8 +214,7 @@ test('a coordinator can delete their own institution: blocked at once, restorabl
   const reg = await anon().post('/api/auth/register', { name: 'Gamma Head', email: 'gamma@gamma.test', password: PW, role: 'coordinator', institutionName: 'Gamma Institute' });
   assert.equal(reg.status, 201);
   await verify('gamma@gamma.test');
-  const gamma = (await S.owner.get('/api/institutions?status=pending')).body.data.find((i) => i.name === 'Gamma Institute');
-  await S.owner.post(`/api/institutions/${gamma._id}/decision`, { decision: 'approve' });
+  const gamma = (await S.admin.get('/api/platform/institutions?status=approved')).body.data.find((i) => i.name === 'Gamma Institute');
   const g = await loggedIn('gamma@gamma.test', 'coordinator', PW);
   // Gamma gets data of its own, including an uploaded file
   assert.equal((await g.post('/api/departments', { name: 'Gamma Dept', code: 'GD' })).status, 201);
@@ -228,10 +227,6 @@ test('a coordinator can delete their own institution: blocked at once, restorabl
   assert.equal((await g.post('/api/institutions/mine/delete', { ...body, password: 'wrong-pass' })).status, 422);
   assert.equal((await g.post('/api/institutions/mine/delete', { ...body, confirmName: 'Gamma' })).status, 422);
   assert.equal((await (await loggedIn('alice@apmms.test')).post('/api/institutions/mine/delete', body)).status, 403, 'students cannot');
-  // the institution holding the only platform owner is protected
-  const protectedTry = await S.owner.post('/api/institutions/mine/delete', { password: 'Demo@12345', confirmName: 'Demo University' });
-  assert.equal(protectedTry.status, 409);
-  assert.equal(protectedTry.body.code ?? protectedTry.body.error?.code, 'LAST_PLATFORM_OWNER');
 
   // 1) normal delete: blocked immediately, hidden, data kept for the grace period
   const del = await g.post('/api/institutions/mine/delete', body);
@@ -242,14 +237,14 @@ test('a coordinator can delete their own institution: blocked at once, restorabl
   assert.equal(relog.status, 403);
   assert.match(relog.body.message, /deleted/);
   assert.ok(!(await opts()).institutions.some((i) => i.name === 'Gamma Institute'));
-  const row = (await S.owner.get('/api/institutions')).body.data.find((i) => i._id === gamma._id);
+  const row = (await S.admin.get('/api/platform/institutions')).body.data.find((i) => i._id === gamma._id);
   assert.equal(row.status, 'deleted');
   assert.ok(new Date(row.purgeAt) > new Date());
   assert.ok(fs.existsSync(stored), 'files kept during the grace period');
   // other institutions are untouched
   assert.equal((await (await loggedIn('alice@apmms.test')).get('/api/auth/me')).status, 200);
-  // the platform owner can restore it
-  assert.equal((await S.owner.post(`/api/institutions/${gamma._id}/decision`, { decision: 'restore' })).status, 200);
+  // a platform admin can restore it
+  assert.equal((await S.admin.post(`/api/platform/institutions/${gamma._id}/decision`, { decision: 'restore' })).status, 200);
   const g2 = await loggedIn('gamma@gamma.test', 'coordinator', PW);
   assert.equal((await g2.get('/api/departments')).body.data.length, 1, 'data came back with it');
 
@@ -267,43 +262,14 @@ test('a coordinator can delete their own institution: blocked at once, restorabl
   const again = await anon().post('/api/auth/register', { name: 'Gamma Head', email: 'gamma@gamma.test', password: PW, role: 'coordinator', institutionName: 'Gamma Institute' });
   assert.equal(again.status, 201);
   await verify('gamma@gamma.test');
-  const g3i = (await S.owner.get('/api/institutions?status=pending')).body.data.find((i) => i.name === 'Gamma Institute');
-  await S.owner.post(`/api/institutions/${g3i._id}/decision`, { decision: 'approve' });
+  const g3i = (await S.admin.get('/api/platform/institutions?status=approved')).body.data.find((i) => i.name === 'Gamma Institute');
   const g3 = await loggedIn('gamma@gamma.test', 'coordinator', PW);
   const now = await g3.post('/api/institutions/mine/delete', { ...body, eraseNow: true });
   assert.equal(now.status, 200);
   assert.equal(now.body.data.erased, true);
   assert.equal(await Institution.countDocuments({ _id: g3i._id }), 0);
-  // the platform owner can also erase a request for good
-  assert.equal((await S.owner.post(`/api/institutions/${g3i._id}/decision`, { decision: 'purge' })).status, 404);
-});
-
-test('first-time platform setup: setup code needed (except on a brand-new local database)', async () => {
-  (await import('../config/env.js')).default.coordinatorSetupCode = 'test-setup-code';
-  // no platform owner, but users exist -> the secret code from server/.env is required
-  await runUnscoped(() => User.updateMany({}, { $set: { isPlatformOwner: false } }));
-  let o = await opts();
-  assert.equal(o.platform.needsSetup, true);
-  assert.equal(o.platform.needsSetupCode, true);
-  const body = { name: 'First Owner', email: 'first@owner.test', password: PW, role: 'coordinator', institutionName: 'Owner Academy' };
-  assert.equal((await anon().post('/api/auth/register', { ...body, setupCode: 'wrong' })).status, 403);
-  const c = anon();
-  const ok = await c.post('/api/auth/register', { ...body, setupCode: 'test-setup-code' });
-  assert.equal(ok.status, 201, JSON.stringify(ok.body));
-  assert.equal(ok.body.data.user.isPlatformOwner, true);
-  assert.equal((await c.get('/api/institutions')).status, 200, 'logged in at once');
-  // empty database in development: no code needed
-  await runUnscoped(async () => { await User.deleteMany({}); await Institution.deleteMany({}); });
-  o = await opts();
-  assert.equal(o.platform.needsSetupCode, false);
-  const c2 = anon();
-  const r = await c2.post('/api/auth/register', { name: 'Local Dev', email: 'dev@local.test', password: PW, role: 'coordinator', institutionName: 'My College' });
-  assert.equal(r.status, 201);
-  assert.equal(r.body.data.user.isPlatformOwner, true);
-  // migration is a no-op on a database that already has institutions
-  const { migrateToInstitutions } = await import('../services/migration.js');
-  await migrateToInstitutions({ log: () => {} });
-  assert.equal(await Institution.countDocuments({}), 1);
+  // a platform admin can also erase for good (already gone here -> 404)
+  assert.equal((await S.admin.post(`/api/platform/institutions/${g3i._id}/decision`, { decision: 'purge' })).status, 404);
 });
 
 test('migration moves records created before institutions existed into one Default Institution', async () => {
@@ -324,8 +290,7 @@ test('migration moves records created before institutions existed into one Defau
   assert.equal(inst[0].status, 'approved');
   const users = await runUnscoped(() => User.find({}).lean());
   assert.ok(users.every((u) => String(u.institution) === String(inst[0]._id)));
-  assert.equal(users.find((u) => u.email === 'oldc@old.test').isPlatformOwner, true, 'earliest coordinator becomes the platform owner');
-  assert.ok(!users.find((u) => u.email === 'olds@old.test').isPlatformOwner);
+  assert.ok(users.every((u) => u.isPlatformOwner === undefined), 'the old platform-owner flag is gone');
   const dep = await mongoose.connection.collection('departments').findOne({ code: 'OLD' });
   assert.equal(String(dep.institution), String(inst[0]._id));
   // running it again changes nothing

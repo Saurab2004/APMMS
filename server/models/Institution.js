@@ -16,7 +16,7 @@ const institutionSchema = new Schema(
     statusNote: { type: String, trim: true, maxlength: 300 },
     decidedAt: { type: Date },
     decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-    // Self-deletion by the coordinator: blocked at once, erased for good at purgeAt (unless the platform owner restores it).
+    // Self-deletion by the coordinator: blocked at once, erased for good at purgeAt (unless a platform admin restores it).
     deletedAt: { type: Date },
     purgeAt: { type: Date },
   },

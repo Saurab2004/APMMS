@@ -38,7 +38,7 @@ const GUIDE = {
   coordinator: {
     intro: 'You run your institution\'s own workspace. Nobody outside your institution can see your data.',
     steps: [
-      ['First-time setup', 'Your institution was approved by the platform administrator. Add your departments and the current academic term with its deadlines - students cannot create groups before a current term exists.'],
+      ['First-time setup', 'Your institution is active. Add your departments and the current academic term with its deadlines - students cannot create groups before a current term exists.'],
       ['Approve people', 'Supervisors who sign up wait on the Users page until you approve them. You can also create any account yourself.'],
       ['Assign supervisors', 'Use Supervisor assignment. Capacity warnings stop overloading a supervisor.'],
       ['Monitor', 'Dashboard, Project monitoring, Report monitoring and Analytics show where help is needed.'],

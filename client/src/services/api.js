@@ -11,6 +11,8 @@ export const api = axios.create({
 
 export const SESSION_EXPIRED = 'apmms:session-expired';
 export const PASSWORD_CHANGE = 'apmms:password-change';
+export const PLATFORM_SESSION_EXPIRED = 'apmms:platform-session-expired';
+export const PLATFORM_PASSWORD_CHANGE = 'apmms:platform-password-change';
 
 api.interceptors.response.use(
   (res) => res,
@@ -24,6 +26,13 @@ api.interceptors.response.use(
     else error.userMessage = data?.message || `Request failed (${res.status})`;
 
     const url = error.config?.url || '';
+    // The platform admin console has its own session: its errors must never log an institution user out (and vice versa).
+    if (url.startsWith('/platform')) {
+      const isPlatformAuth = ['/platform/auth/login', '/platform/auth/me', '/platform/setup'].some((u) => url.startsWith(u));
+      if (res?.status === 401 && !isPlatformAuth) window.dispatchEvent(new Event(PLATFORM_SESSION_EXPIRED));
+      if (res?.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event(PLATFORM_PASSWORD_CHANGE));
+      return Promise.reject(error);
+    }
     const isAuthCall = url.startsWith('/auth/login') || url.startsWith('/auth/me') || url.startsWith('/auth/register');
     if (res?.status === 401 && !isAuthCall) window.dispatchEvent(new Event(SESSION_EXPIRED));
     if (res?.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') window.dispatchEvent(new Event(PASSWORD_CHANGE));

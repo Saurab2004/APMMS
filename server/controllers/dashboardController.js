@@ -247,7 +247,7 @@ export const listAuditLogs = asyncHandler(async (req, res) => {
 });
 
 export const systemInfo = asyncHandler(async (req, res) => {
-  const owner = Boolean(req.user.isPlatformOwner); // server details belong to the platform owner, not to every institution
+  const owner = false; // server details (database host, disk) belong to the platform admin console, not to institutions
   const counts = {};
   const models = { users: User, projects: Project, projectgroups: ProjectGroup, proposals: Proposal, progressreports: ProgressReport, reportversions: ReportVersion, messages: Message, notifications: Notification, auditlogs: AuditLog };
   await Promise.all(

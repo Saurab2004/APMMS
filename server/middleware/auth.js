@@ -51,9 +51,9 @@ export async function userFromToken(token) {
 
 /** Every account belongs to one institution, and that institution must be approved and not suspended. */
 export async function assertInstitutionUsable(user) {
-  if (!user.institution) throw new AppError('This account is not linked to an institution yet. Ask the platform administrator.', 403);
+  if (!user.institution) throw new AppError('This account is not linked to an institution yet. Ask the APMMS administrator.', 403);
   const inst = await Institution.findById(user.institution).select('status name').lean();
-  if (!inst || inst.status === 'pending') throw new AppError('Your institution is waiting for approval by the platform administrator.', 403, undefined, 'INSTITUTION_PENDING');
+  if (!inst || inst.status === 'pending') throw new AppError('Your institution is not active yet. Its coordinator must verify their email first.', 403, undefined, 'INSTITUTION_PENDING');
   if (inst.status === 'deleted') throw new AppError(`${inst.name} was deleted by its coordinator.`, 403, undefined, 'INSTITUTION_DELETED');
   if (inst.status !== 'approved') throw new AppError(`Access for ${inst.name} is switched off (${inst.status}). Please contact the platform administrator.`, 403, undefined, 'INSTITUTION_BLOCKED');
 }
@@ -73,11 +73,5 @@ export const authorize = (...roles) => (req, _res, next) => {
   if (!req.user || !roles.includes(req.user.role)) {
     return next(new AppError('You do not have permission to perform this action', 403));
   }
-  next();
-};
-
-/** The platform owner approves new institutions. Use after `authenticate`. */
-export const requirePlatformOwner = (req, _res, next) => {
-  if (!req.user?.isPlatformOwner) return next(new AppError('Only the platform owner can do this', 403));
   next();
 };

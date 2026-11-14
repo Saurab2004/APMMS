@@ -305,7 +305,7 @@ test('one login page for all roles: role must match, supervisors need approval, 
   const inst = opts.institutions.find((i) => i.name === 'Demo University');
   const depId = inst.departments[0]._id;
   const institutionId = inst._id;
-  assert.equal(opts.platform.needsSetup, false, 'a platform owner already exists');
+  assert.equal(opts.platform.allowInstitutionRegistration, true);
   const reg = await anon().post('/api/auth/register', { name: 'Dr New Sup', email: 'newsup@apmms.test', password: 'Passw0rd1', role: 'supervisor', institutionId, departmentId: depId, designation: 'Lecturer' });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   assert.equal(reg.body.data.pending, true);
@@ -332,7 +332,7 @@ test('one login page for all roles: role must match, supervisors need approval, 
   assert.equal((await coord.post(`/api/users/${rid}/approval`, { decision: 'reject', note: 'Not on staff list' })).status, 200);
   assert.match((await anon().post('/api/auth/login', { email: 'rej@apmms.test', password: 'Passw0rd1' })).body.message, /not approved/);
 
-  // a new coordinator registers a NEW institution and waits for the platform owner; the setup code is not used any more
+  // a new coordinator registers a NEW institution; it activates when the email is verified (no setup code, nobody approves)
   const c1 = await anon().post('/api/auth/register', { name: 'Fake Boss', email: 'boss@apmms.test', password: 'Passw0rd1', role: 'coordinator', institutionName: 'Boss College' });
   assert.equal(c1.status, 201);
   assert.equal(c1.body.data.pending, true);

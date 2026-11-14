@@ -150,14 +150,37 @@ Every request of a logged-in user is automatically limited to that user's instit
 
 | Method & path | Who | Notes |
 |---|---|---|
-| GET `/auth/registration-options` | public | `{ institutions: [{_id,name,type,allowSelfRegistration,departments[]}], platform: {needsSetup, needsSetupCode, setupCodeConfigured} }` - approved institutions only |
-| POST `/auth/register` | public | Student/Supervisor: `institutionId` + `departmentId` required. Coordinator: `institutionName`, optional `institutionType`, `departmentName`; creates a **pending** institution (or, on first-time setup, an approved one plus the platform owner, needing `setupCode`). |
-| GET `/institutions?status=` | platform owner | All institutions with coordinators and counts |
-| POST `/institutions/:id/decision` `{decision, note?}` | platform owner | `approve`, `reject`, `suspend`, `reactivate`, `restore` (undo a deletion), `purge` (erase for good). Not on your own institution. |
-| POST `/institutions/platform-owner` `{userId}` | platform owner | Gives another approved coordinator the same role |
-| POST `/institutions/mine/delete` `{password, confirmName, eraseNow?}` | coordinator | Deletes the caller's institution. 422 wrong password/name; 409 `LAST_PLATFORM_OWNER` if it holds the only platform owner. |
+| GET `/auth/registration-options` | public | `{ institutions: [{_id,name,type,allowSelfRegistration,departments[]}], platform: {allowInstitutionRegistration, notice} }` - approved institutions only |
+| POST `/auth/register` | public | Student/Supervisor: `institutionId` + `departmentId` required. Coordinator: `institutionName`, optional `institutionType`, `departmentName`; creates an institution that **activates itself when the coordinator verifies the email** (403 when the platform admin switched new-institution sign-up off). |
+| POST `/institutions/mine/delete` `{password, confirmName, eraseNow?}` | coordinator | Deletes the caller's institution. 422 wrong password/name |
 
 Login and every request return 403 with code `INSTITUTION_PENDING`, `INSTITUTION_BLOCKED` (suspended) or `INSTITUTION_DELETED` when the institution is not usable.
+
+## Platform admin API (`/api/platform/*`)
+
+The website owner's console. Separate accounts (`PlatformAdmin`, no institution), a separate HttpOnly cookie `apmms_admin` (SameSite=Strict, sent only to `/api/platform`), tokens marked `kind:'platform'`. An institution user (even a coordinator) gets **401** here, and an admin cookie does not work on the normal API. Admins only see counts and account details, never student work.
+
+| Method & path | Notes |
+|---|---|
+| GET `/platform/public` | public: `{allowInstitutionRegistration, notice}` for the login/register pages |
+| GET `/platform/setup-status` | public: `{needsSetup, needsCode, codeConfigured}` |
+| POST `/platform/setup` `{name,email,password,setupCode?}` | creates the **first** admin (founder). Production needs `PLATFORM_SETUP_CODE`. 409 once an admin exists |
+| POST `/platform/auth/login` `{email,password}` | 5 wrong passwords lock the account for 15 minutes; same error for unknown email |
+| POST `/platform/auth/logout`, GET `/platform/auth/me`, PATCH `/platform/auth/me` `{name}` | |
+| POST `/platform/auth/change-password` | ends the admin's other sessions. A temporary password must be changed first (403 `PASSWORD_CHANGE_REQUIRED` elsewhere) |
+| GET `/platform/overview` | totals, institutions by status, newest institutions, things needing attention |
+| GET `/platform/institutions?status=&q=` , GET `.../export.csv`, GET `.../:id` | counts and coordinator accounts |
+| POST `/platform/institutions` | creates an active institution + first coordinator; returns a one-time `tempPassword` |
+| PATCH `/platform/institutions/:id` `{name?,type?}` | rename |
+| POST `/platform/institutions/:id/decision` `{decision,note?}` | `approve`, `reject`, `suspend`, `reactivate`, `restore`, `purge` |
+| GET `/platform/coordinators?q=&state=&institution=` | state: `unverified`, `inactive` |
+| POST `/platform/coordinators/:id/action` `{action}` | `reset-password` (one-time temp password), `deactivate`, `reactivate`, `resend-verification`, `verify-email` |
+| GET/POST `/platform/admins`, POST `/platform/admins/:id/action` | add admin (temp password), `deactivate`, `reactivate`, `reset-password`. The founder and yourself are protected |
+| GET `/platform/audit?action=&q=` | audit log of admin actions |
+| GET `/platform/health` | database, memory, uptime, email configured, uploads size (no secrets) |
+| GET/PUT `/platform/settings` | `allowInstitutionRegistration`, `loginNotice` |
+
+Password reset for admins uses the normal `/auth/forgot-password` and `/auth/reset-password` (the token tells which kind of account it is).
 
 ## Email verification, account deletion and welcome guide
 

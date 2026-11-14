@@ -27,7 +27,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  const f = useForm({ name: '', email: '', studentId: '', departmentId: '', designation: '', setupCode: '', institutionId: '', institutionName: '', institutionType: 'university', departmentName: '', password: '', confirm: '' });
+  const f = useForm({ name: '', email: '', studentId: '', departmentId: '', designation: '', institutionId: '', institutionName: '', institutionType: 'university', departmentName: '', password: '', confirm: '' });
 
   useEffect(() => { get('/auth/registration-options').then(setOpts).catch((e) => setError(errMsg(e))); }, []);
   if (user && !done) return <Navigate to={homeFor(user.role)} replace />;
@@ -36,9 +36,8 @@ export default function Register() {
   const platform = opts?.platform;
   const institution = opts?.institutions.find((i) => i._id === v.institutionId);
   const selfOff = role !== 'coordinator' && institution && !institution.allowSelfRegistration;
-  const coordIntro = platform?.needsSetup
-    ? 'First-time setup: you register the first institution and become the platform owner, who approves every institution that joins later.'
-    : 'Register your institution as its coordinator. After you verify your email, the platform administrator reviews and approves it. Then you can log in and set up departments, terms and users.';
+  const coordOff = role === 'coordinator' && platform && !platform.allowInstitutionRegistration;
+  const coordIntro = 'Register your institution as its coordinator. After you verify your email your institution is activated automatically (no other institution is involved). Then you can log in and set up departments, terms and users.';
 
   const submit = async (e) => {
     e.preventDefault();
@@ -49,7 +48,7 @@ export default function Register() {
       const r = await register({ role, name: v.name, email: v.email, password: v.password, studentId: role === 'student' ? v.studentId : undefined,
         institutionId: role === 'coordinator' ? undefined : v.institutionId, departmentId: role === 'coordinator' ? undefined : v.departmentId,
         institutionName: role === 'coordinator' ? v.institutionName : undefined, institutionType: role === 'coordinator' ? v.institutionType : undefined, departmentName: role === 'coordinator' ? v.departmentName || undefined : undefined,
-        designation: role === 'supervisor' ? v.designation : undefined, setupCode: role === 'coordinator' && platform?.needsSetupCode ? v.setupCode : undefined });
+        designation: role === 'supervisor' ? v.designation : undefined });
       if (r.verificationRequired || r.pending) setDone({ message: r.message, email: r.email || v.email, emailSent: r.emailSent });
       else navigate(homeFor(r.user.role), { replace: true });
     } catch (err) {
@@ -69,7 +68,7 @@ export default function Register() {
           <p className="muted">{done.message}</p>
           {(<>
             <Alert tone="info">We sent a verification link to <strong>{done.email}</strong>. You must open it before you can log in. The link works for 24 hours.</Alert>
-            {done.emailSent === false && <Alert tone="warning">Email delivery is not set up on this server yet, so nothing was sent. Ask your coordinator (or the platform administrator) to confirm your email, or see the setup guide.</Alert>}
+            {done.emailSent === false && <Alert tone="warning">Email delivery is not set up on this server yet, so nothing was sent. Ask your coordinator (or the APMMS administrator) to confirm your email, or see the setup guide.</Alert>}
             <ResendVerification email={done.email} />
           </>)}
           <Button to="/login">Back to login</Button>
@@ -86,9 +85,10 @@ export default function Register() {
       <p className="muted small mb">{role === 'coordinator' ? coordIntro : INTRO[role]}</p>
       {!opts && !error ? <Loading /> : null}
       {role !== 'coordinator' && opts && opts.institutions.length === 0 && <Alert tone="warning" className="mb">No institution has joined yet. A coordinator must register the institution first - choose <strong>Coordinator</strong> above.</Alert>}
+      {coordOff && <Alert tone="warning" className="mb">New institutions cannot sign up right now. Please contact the APMMS administrator.</Alert>}
       {selfOff && <Alert tone="warning" className="mb">Self-registration is turned off at {institution.name}. Please ask its coordinator to create your account.</Alert>}
       {error && <Alert tone="danger" className="mb">{error}</Alert>}
-      {opts && !selfOff && !(role !== 'coordinator' && opts.institutions.length === 0) && (
+      {opts && !selfOff && !coordOff && !(role !== 'coordinator' && opts.institutions.length === 0) && (
         <form className="stack" onSubmit={submit} noValidate>
           <Field label="Full name" required error={f.errors.name}><Input {...f.bind('name')} autoComplete="name" required /></Field>
           <Field label="Email" required error={f.errors.email}><Input type="email" {...f.bind('email')} autoComplete="email" required /></Field>
@@ -116,10 +116,9 @@ export default function Register() {
             <Field label="Your department (optional)" error={f.errors.departmentName} help="Students pick a department when they sign up. You can add more departments later."><Input {...f.bind('departmentName')} maxLength={120} /></Field>
           </>)}
           {role === 'supervisor' && <Field label="Designation" help="For example Lecturer or Associate Professor" error={f.errors.designation}><Input {...f.bind('designation')} maxLength={100} /></Field>}
-          {role === 'coordinator' && platform?.needsSetupCode && <Field label="Setup code" required error={f.errors.setupCode} help={platform.setupCodeConfigured ? 'The value of COORDINATOR_SETUP_CODE in server/.env' : 'Not set yet: add COORDINATOR_SETUP_CODE=your-secret to server/.env and restart the server.'}><PasswordInput {...f.bind('setupCode')} autoComplete="off" /></Field>}
           <Field label="Password" required error={f.errors.password} help="At least 8 characters with a letter and a number."><PasswordInput showStrength {...f.bind('password')} autoComplete="new-password" required /></Field>
           <Field label="Confirm password" required error={f.errors.confirm}><PasswordInput {...f.bind('confirm')} autoComplete="new-password" required /></Field>
-          <Button type="submit" icon={UserPlus} loading={busy} block>{role === 'supervisor' ? 'Send request for approval' : role === 'coordinator' ? (platform?.needsSetup ? 'Set up the platform' : 'Register my institution') : 'Create account'}</Button>
+          <Button type="submit" icon={UserPlus} loading={busy} block>{role === 'supervisor' ? 'Send request for approval' : role === 'coordinator' ? 'Register my institution' : 'Create account'}</Button>
         </form>
       )}
       <p className="muted small mt center">Already have an account? <Link to="/login">Log in</Link></p>

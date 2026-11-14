@@ -93,6 +93,14 @@ export function latestToken(email) {
 }
 export { outbox };
 
+/** Logs a platform admin in (separate cookie, separate API) and returns the client. */
+export async function adminLoggedIn(email = 'admin@apmms.test', password = DEMO_PASSWORD) {
+  const c = new Client();
+  const r = await c.post('/api/platform/auth/login', { email, password });
+  if (r.status !== 200) throw new Error(`admin login failed for ${email}: ${JSON.stringify(r.body)}`);
+  return c;
+}
+
 export const loggedIn = async (email, _role, password) => {
   const c = new Client();
   await c.login(email, password);

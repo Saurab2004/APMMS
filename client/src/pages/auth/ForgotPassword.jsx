@@ -19,12 +19,12 @@ export default function ForgotPassword() {
   return (
     <AuthShell>
       <h1>Forgot your password?</h1>
-      <p className="muted mb">Enter your email and we will generate a reset link.</p>
+      <p className="muted mb">Enter your email and we will send you a reset link.</p>
       {error && <Alert tone="danger" className="mb">{error}</Alert>}
       {done ? (
         <Alert tone="success">
           {done}
-          <div className="small mt">Email delivery is not configured in this installation: the link is printed in the <strong>server console</strong> (ask your administrator, or see the setup guide).</div>
+          <div className="small mt">If nothing arrives in a few minutes, check your spam folder. If email is not set up on this installation, the link is printed in the <strong>server console</strong> (ask your administrator).</div>
         </Alert>
       ) : (
         <form className="stack" onSubmit={submit}>

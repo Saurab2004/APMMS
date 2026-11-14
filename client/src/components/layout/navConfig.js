@@ -96,11 +96,7 @@ export const NAV = {
 
 export const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
-/** The sidebar for one user. The platform owner (who approves institutions) gets one extra entry. */
+/** The sidebar for one user. */
 export function navFor(user) {
-  const groups = NAV[user.role] || [];
-  if (user.role === 'coordinator' && user.isPlatformOwner) {
-    return [...groups, { title: 'Platform', items: [{ to: '/coordinator/institutions', label: 'Institutions', icon: Building2 }] }];
-  }
-  return groups;
+  return NAV[user.role] || [];
 }

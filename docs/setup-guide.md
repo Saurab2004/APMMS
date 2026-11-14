@@ -14,7 +14,7 @@ cp .env.example .env        (Windows: copy .env.example .env)
 ```
 Open `server/.env` and set `JWT_SECRET` to a long random string:
 `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
-Also choose a **coordinator setup code** (any secret words) on the line `COORDINATOR_SETUP_CODE=`. It is used once, to create the first coordinator (see step 3).
+Also choose a **setup code** (any secret words) on the line `PLATFORM_SETUP_CODE=`. It is used once, to create the first platform admin (see step 3). On a brand-new local database it is not needed.
 Other defaults (port 5000, `MONGO_URI=mongodb://127.0.0.1:27017/apmms`, client at 5173) normally need no change.
 
 ## 2b. Set up email (needed for email verification)
@@ -40,18 +40,22 @@ EMAIL_VERIFY_HOURS=24
 ## 3. Institutions, coordinators and everyone else
 APMMS serves **many institutions** (universities, colleges, schools) from one installation. Each institution is its own **workspace**: its coordinator, supervisors and students can never see another institution's data.
 
-**First time only - the platform owner.** Open the **Register** page, pick **Coordinator** and register your institution. On a brand-new local database (development) nothing else is needed. In production (or when the database already has users) also type the `COORDINATOR_SETUP_CODE` from `server/.env`. You become the *platform owner*: you approve every institution that joins later (sidebar: **Institutions**).
+**The platform admin = you, the website owner.** The website owner has a **separate admin account and console** that belongs to no institution, so no institution can ever block or approve it. Create the first admin in one of two ways:
+1. **On the website:** Login page > **Platform admin login** > *Set up the platform admin account* (or open `/platform/setup`). In production it asks for your `PLATFORM_SETUP_CODE`.
+2. **From your computer** (no setup code needed, works with the Atlas address in `server/.env`): `cd server`, then `npm run create-admin -- --email you@example.com --name "Your Name"`. It asks for the password. The same command **resets the password** of an existing admin, so it is also the "I am locked out" fix.
 
-**Another institution joins.** Its head registers as **Coordinator** with the institution name, verifies the email, then waits. You approve or reject on **Institutions** (you can suspend later, or restore/erase a deleted one). After approval they log in, add departments and the current academic term, and invite their people.
+After logging in as admin you can: see all institutions with their counts, add an institution with its first coordinator, rename / suspend / reactivate / restore / erase an institution, help coordinators (reset password, deactivate, resend or confirm the verification email), add more admins, read the platform audit log, check system health and switch new-institution sign-up on or off. You never see students' projects or reports. Admin emails cannot be used for institution accounts and vice versa.
+
+**Another institution joins.** Its head registers as **Coordinator** with the institution name and verifies the email. The institution is **activated automatically** right after that; nobody has to approve it. They log in, add departments and the current academic term, and invite their people. If someone misuses the platform, a platform admin can suspend that institution.
 
 **Students and supervisors** sign up on the Register page: choose **institution** first, then **department**.
 - **Student** - verifies the email, then logs in.
 - **Supervisor** - verifies the email, then waits until *that institution's* coordinator approves on **Users & approvals**.
 - **Login** is one page: pick your role, then enter email and password.
 
-**Deleting an institution.** A coordinator can delete their institution (Profile & account > *Delete my institution*, password + institution name required). Everyone is blocked at once and the data is erased for good after `INSTITUTION_PURGE_DAYS` (default 14) unless the platform owner restores it; "erase immediately" is also offered. This is meant for trials: try APMMS, and remove everything if it is not for you. Deleting yourself only: *Delete my account*.
+**Deleting an institution.** A coordinator can delete their institution (Profile & account > *Delete my institution*, password + institution name required). Everyone is blocked at once and the data is erased for good after `INSTITUTION_PURGE_DAYS` (default 14) unless a platform admin restores it; "erase immediately" is also offered. This is meant for trials: try APMMS, and remove everything if it is not for you. Deleting yourself only: *Delete my account*.
 
-**Existing installations.** When you upgrade, the server moves all existing records into one institution called "Default Institution" (nothing is deleted or changed otherwise) and makes the oldest coordinator the platform owner. Rename it directly in the `institutions` collection if you like.
+**Existing installations.** When you upgrade, the server moves all existing records into one institution called "Default Institution" (nothing is deleted or changed otherwise). Then create your platform admin (see above) to manage it. Rename it directly in the `institutions` collection if you like.
 
 ## 3b. Create demo data (optional, never automatic)
 ```

@@ -8,20 +8,17 @@ import { setAuthCookie, clearAuthCookie } from '../middleware/auth.js';
 import { audit } from '../services/audit.js';
 import { getSettings } from '../services/settings.js';
 import { issueVerificationEmail, findForVerification } from '../services/emailVerification.js';
-import { emailConfigured } from '../services/mailer.js';
+import { emailConfigured, sendMail } from '../services/mailer.js';
 import { assertInstitutionUsable } from '../middleware/auth.js';
+import { platformAudit } from '../services/platformAudit.js';
+import { activateNewInstitution } from '../services/institutionActivation.js';
+import { PlatformAdmin } from '../models/index.js';
+import { getPlatformSettings } from '../services/platformSettings.js';
 
 const populatedUser = (id) => User.findById(id).populate('department', 'name code').populate('term', 'name academicYear semester').populate('institution', 'name type status');
 
 const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
-function sameSecret(a, b) {
-  const x = Buffer.from(String(a));
-  const y = Buffer.from(String(b));
-  return x.length === y.length && crypto.timingSafeEqual(x, y);
-}
-
-const platformOwnerExists = () => User.exists({ isPlatformOwner: true, isActive: true });
 const nameKeyOf = (name) => String(name).trim().toLowerCase().replace(/\s+/g, ' ');
 const deptCode = (name) => {
   const words = String(name).toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(' ').filter(Boolean);
@@ -67,8 +64,7 @@ export const me = asyncHandler(async (req, res) => {
 });
 
 export const registrationOptions = asyncHandler(async (_req, res) => {
-  const owner = await platformOwnerExists();
-  const empty = !(await User.exists({}));
+  const platform = await getPlatformSettings();
   const institutions = await Institution.find({ status: 'approved' }).select('name type').sort('name').lean();
   const departments = await Department.find({ isActive: true, institution: { $in: institutions.map((i) => i._id) } }).select('name code institution').sort('name').lean();
   const out = [];
@@ -82,13 +78,7 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
   }
   ok(res, {
     institutions: out,
-    // First-time setup: the very first coordinator becomes the platform owner (approves every later institution).
-    platform: {
-      needsSetup: !owner,
-      // A code is needed unless this is a brand new local database in development.
-      needsSetupCode: !owner && !(empty && !env.isProd),
-      setupCodeConfigured: Boolean(env.coordinatorSetupCode),
-    },
+    platform: { allowInstitutionRegistration: platform.allowInstitutionRegistration, notice: platform.loginNotice },
   });
 });
 
@@ -99,13 +89,13 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
  *  - coordinator: registers a NEW institution (see registerCoordinator)
  */
 export const register = asyncHandler(async (req, res) => {
-  const { name, email, password, studentId, departmentId, institutionId, institutionName, institutionType, departmentName, role = 'student', designation, setupCode } = req.body;
+  const { name, email, password, studentId, departmentId, institutionId, institutionName, institutionType, departmentName, role = 'student', designation } = req.body;
   if (!['student', 'supervisor', 'coordinator'].includes(role)) throw new AppError('Choose Student, Supervisor or Coordinator', 422, { role: 'Invalid role' });
   const problem = passwordProblem(password);
   if (problem) throw new AppError(problem, 422, { password: problem });
-  if (await User.exists({ email })) throw new AppError('An account with this email already exists', 409, { email: 'Already registered' });
+  if ((await User.exists({ email })) || (await PlatformAdmin.exists({ email }))) throw new AppError('An account with this email already exists', 409, { email: 'Already registered' });
 
-  if (role === 'coordinator') return registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName, setupCode });
+  if (role === 'coordinator') return registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName });
 
   // Students and supervisors join ONE existing, approved institution.
   if (!institutionId) throw new AppError('Please choose your institution', 422, { institutionId: 'Required' });
@@ -141,85 +131,69 @@ export const register = asyncHandler(async (req, res) => {
 
 /**
  * Coordinator sign-up = "register my institution".
- *  - Very first coordinator on a new installation (platform setup): needs the setup code from server/.env
- *    (not needed on an empty local development database). The institution is approved at once and the person
- *    becomes the platform owner.
- *  - Everyone after that: the institution and its coordinator wait until the platform owner approves them.
+ * The institution is created as "pending" and switches itself on when the coordinator verifies their email.
+ * Nobody from another institution is involved. The website owner (platform admin, see /platform) can suspend
+ * or reject it later, and can switch new sign-ups off completely (platform setting).
  */
-async function registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName, setupCode }) {
+async function registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName }) {
+  if (!(await getPlatformSettings()).allowInstitutionRegistration) throw new AppError('New institutions cannot sign up right now. Please contact the APMMS administrator.', 403);
   if (!institutionName || String(institutionName).trim().length < 3) throw new AppError('Enter the name of your institution', 422, { institutionName: 'Required (at least 3 characters)' });
   const nameKey = nameKeyOf(institutionName);
   if (await Institution.exists({ nameKey, status: { $in: ['pending', 'approved', 'suspended'] } })) {
     throw new AppError('An institution with this name is already registered. If you work there, sign up as a Supervisor or Student and choose it, or ask its coordinator.', 409, { institutionName: 'Already registered' });
   }
-  const owner = await platformOwnerExists();
-  const bootstrap = !owner;
-  if (bootstrap) {
-    const brandNew = !(await User.exists({})) && !env.isProd;
-    if (!brandNew) {
-      if (!env.coordinatorSetupCode) throw new AppError('First-time setup needs COORDINATOR_SETUP_CODE in server/.env. Set it, restart the server and try again.', 403, { setupCode: 'Not configured on the server' });
-      if (!setupCode || !sameSecret(setupCode, env.coordinatorSetupCode)) throw new AppError('The setup code is not correct', 403, { setupCode: 'Incorrect code' });
-    }
-  }
-
-  const institution = await Institution.create({
-    name: String(institutionName).trim(), nameKey, type: institutionType || 'university',
-    status: bootstrap ? 'approved' : 'pending', decidedAt: bootstrap ? new Date() : undefined,
-  });
+  const institution = await Institution.create({ name: String(institutionName).trim(), nameKey, type: institutionType || 'university', status: 'pending' });
   if (departmentName && String(departmentName).trim()) {
     await Department.create({ institution: institution._id, name: String(departmentName).trim(), code: deptCode(departmentName) });
   }
-  const user = new User(bootstrap
-    ? { name, email, role: 'coordinator', institution: institution._id, isPlatformOwner: true, emailVerified: true, emailVerifiedAt: new Date() } // holding the setup code already proves access
-    : { name, email, role: 'coordinator', institution: institution._id, isActive: false, approvalStatus: 'pending', emailVerified: false });
+  const user = new User({ name, email, role: 'coordinator', institution: institution._id, isActive: false, approvalStatus: 'pending', emailVerified: false });
   await user.setPassword(password);
   await user.save();
-
-  if (bootstrap) {
-    setAuthCookie(res, user);
-    await audit({ user, ip: req.ip }, { action: 'auth.platform_setup', entityType: 'User', entityId: user._id, summary: `${name} set up the platform with ${institution.name}` });
-    return ok(res, { user: await populatedUser(user._id) }, 201);
-  }
-
-  const owners = await User.find({ isPlatformOwner: true, isActive: true }).select('_id').lean();
-  await notify(owners.map((o) => o._id), { type: 'approval_request', title: 'New institution waiting for approval', body: `${institution.name} (${name}, ${email}) asked to join APMMS.`, link: '/coordinator/institutions', dedupeKey: `institution:${institution._id}` });
-  await audit({ user, ip: req.ip }, { action: 'auth.institution_requested', entityType: 'Institution', entityId: institution._id, summary: `${name} requested a workspace for ${institution.name}` });
+  await audit({ user, ip: req.ip }, { action: 'auth.institution_requested', entityType: 'Institution', entityId: institution._id, summary: `${name} registered the institution ${institution.name} (waiting for email verification)` });
   const mail = await sendVerification(user._id);
-  return ok(res, { pending: true, verificationRequired: true, email, emailSent: mail.sent, message: 'Request sent. Verify your email, then wait for the platform administrator to approve your institution before you can log in.' }, 201);
+  return ok(res, { pending: true, verificationRequired: true, email, emailSent: mail.sent, message: 'Almost done. Open the link we emailed you to verify your email. Your institution is activated automatically right after that, and then you can log in.' }, 201);
 }
 
+// Password reset works for institution users AND platform admins (same page, same link; the token tells which).
 export const forgotPassword = asyncHandler(async (req, res) => {
-  const user = await User.findOne({ email: req.body.email, isActive: true });
-  if (user) {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  let account = await User.findOne({ email, isActive: true, deletedAt: null });
+  let admin = false;
+  if (!account) { account = await PlatformAdmin.findOne({ email, isActive: true }); admin = Boolean(account); }
+  if (account) {
     const token = crypto.randomBytes(32).toString('hex');
-    user.passwordResetTokenHash = sha256(token);
-    user.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
-    await user.save();
-    // Email is NOT configured in this project. The link is printed on the server console so you
-    // can test the flow. To send real email, plug a provider into this spot.
-    console.log(`[password-reset] ${user.email}: ${env.clientOrigin}/reset-password?token=${token}  (valid 30 minutes)`);
-    await audit({ user, ip: req.ip }, { action: 'auth.password_reset_requested', entityType: 'User', entityId: user._id });
+    account.passwordResetTokenHash = sha256(token);
+    account.passwordResetExpires = new Date(Date.now() + 30 * 60 * 1000);
+    await account.save();
+    const link = `${env.appUrl}/reset-password?token=${token}`;
+    const sent = await sendMail({ to: account.email, subject: 'Reset your APMMS password', text: `Hello ${account.name},\n\nOpen this link within 30 minutes to choose a new password:\n${link}\n\nIf you did not ask for this, ignore this email; your password stays the same.\n` });
+    if (!sent.sent && env.nodeEnv !== 'test') console.log(`[password-reset] ${account.email}: ${link}  (valid 30 minutes; email is not configured/sent)`);
+    if (admin) await platformAudit(account, { action: 'admin.password_reset_requested', targetType: 'PlatformAdmin', targetId: account._id, summary: `${account.name} asked for a password reset` }, req.ip);
+    else await audit({ user: account, ip: req.ip }, { action: 'auth.password_reset_requested', entityType: 'User', entityId: account._id });
   }
   // Always the same answer so nobody can discover which emails exist.
-  ok(res, { message: 'If an account with that email exists, a password reset link has been generated.' });
+  ok(res, { message: 'If an account with that email exists, we have sent a password reset link to it.' });
 });
 
 export const resetPassword = asyncHandler(async (req, res) => {
   const { token, password } = req.body;
   const problem = passwordProblem(password);
   if (problem) throw new AppError(problem, 422, { password: problem });
-  const user = await User.findOne({
-    passwordResetTokenHash: sha256(token),
-    passwordResetExpires: { $gt: new Date() },
-  }).select('+passwordResetTokenHash +passwordResetExpires');
-  if (!user) throw new AppError('This reset link is invalid or has expired', 400);
-  await user.setPassword(password);
-  user.passwordResetTokenHash = undefined;
-  user.passwordResetExpires = undefined;
-  user.mustChangePassword = false;
-  user.tokenVersion += 1; // logs out every existing session
-  await user.save();
-  await audit({ user, ip: req.ip }, { action: 'auth.password_reset', entityType: 'User', entityId: user._id });
+  const filter = { passwordResetTokenHash: sha256(token), passwordResetExpires: { $gt: new Date() } };
+  const fields = '+passwordResetTokenHash +passwordResetExpires';
+  let account = await User.findOne(filter).select(fields);
+  let admin = false;
+  if (!account) { account = await PlatformAdmin.findOne(filter).select(fields); admin = Boolean(account); }
+  if (!account) throw new AppError('This reset link is invalid or has expired', 400);
+  await account.setPassword(password);
+  account.passwordResetTokenHash = undefined;
+  account.passwordResetExpires = undefined;
+  account.mustChangePassword = false;
+  account.tokenVersion += 1; // logs out every existing session
+  if (admin) { account.failedLogins = 0; account.lockUntil = undefined; }
+  await account.save();
+  if (admin) await platformAudit(account, { action: 'admin.password_reset', targetType: 'PlatformAdmin', targetId: account._id, summary: `${account.name} reset their password` }, req.ip);
+  else await audit({ user: account, ip: req.ip }, { action: 'auth.password_reset', entityType: 'User', entityId: account._id });
   ok(res, { message: 'Password updated. You can now log in.' });
 });
 
@@ -279,6 +253,7 @@ export const verifyEmail = asyncHandler(async (req, res) => {
     user.emailVerification = { usedHash: hash }; // the token itself is removed so it cannot be used twice
     await user.save();
     await audit({ user, ip: req.ip }, { action: 'auth.email_verified', entityType: 'User', entityId: user._id, summary: `${user.name} verified their email` });
+    await activateNewInstitution(user, req.ip);
     return ok(res, { verified: true, role: user.role, pendingApproval: user.approvalStatus === 'pending', message: 'Your email is verified.' });
   }
   const used = await User.findOne({ 'emailVerification.usedHash': hash }).select('role approvalStatus');
@@ -325,7 +300,6 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
   if (String(req.body.confirmText || '').trim().toUpperCase() !== 'DELETE') throw new AppError('Type DELETE to confirm.', 422, { confirmText: 'Type DELETE to confirm' });
   if (!(await me.checkPassword(req.body.password))) throw new AppError('Your password is not correct.', 422, { password: 'Incorrect password' });
   const others = await User.countDocuments({ role: 'coordinator', isActive: true, approvalStatus: 'approved', _id: { $ne: me._id } }); // same institution only (automatic)
-  if (me.isPlatformOwner && !(await User.exists({ isPlatformOwner: true, isActive: true, _id: { $ne: me._id } }))) throw new AppError('You are the platform owner who approves new institutions. Make another coordinator the platform owner first (Institutions page).', 409, undefined, 'LAST_PLATFORM_OWNER');
   if (!others) throw new AppError('You are the only active coordinator of your institution. Create another coordinator account first, so the institution is not left without one.', 409, undefined, 'LAST_COORDINATOR');
 
   const oldEmail = me.email;

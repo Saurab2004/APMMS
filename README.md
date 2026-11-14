@@ -2,7 +2,7 @@
 
 A MERN (MongoDB, Express, React, Node.js) web app for managing final-year student projects: groups, proposals, progress and final reports with file versions, milestones, meetings, feedback, real-time chat, notifications, rubric-based evaluation (supervisor and external), analytics and audit logs. JavaScript only; no paid services.
 
-**One login page for everyone:** pick Student, Supervisor or Coordinator, then log in. Sign-up works the same way: you choose your **institution** and department; students verify their email, supervisors also wait for their institution's coordinator, and a new coordinator registers a whole new institution that the platform owner approves.
+**One login page for everyone:** pick Student, Supervisor or Coordinator, then log in. Sign-up works the same way: you choose your **institution** and department; students verify their email, supervisors also wait for their institution's coordinator, and a new coordinator registers a whole new institution, which activates itself when they verify their email. The website owner has a separate **Platform Admin console** (`/platform`, own login and accounts, no institution) to manage institutions, coordinators and other admins.
 
 **Many institutions, one installation:** every institution is a separate workspace (users, departments, projects, rubrics, settings, audit logs). The data is separated automatically in the database layer, so one college can never see another's data.
 
@@ -11,7 +11,7 @@ A MERN (MongoDB, Express, React, Node.js) web app for managing final-year studen
 ## Quick start
 See [docs/setup-guide.md](docs/setup-guide.md). Short version (MongoDB Community Server must be running):
 ```
-cd server && npm install && cp .env.example .env   # set JWT_SECRET and COORDINATOR_SETUP_CODE
+cd server && npm install && cp .env.example .env   # set JWT_SECRET and PLATFORM_SETUP_CODE
 npm run seed        # optional demo data, password Demo@12345
 npm run dev         # API on :5000
 cd ../client && npm install && npm run dev   # app on :5173
@@ -37,7 +37,8 @@ JWT in an HttpOnly cookie, CSRF header guard, bcrypt passwords, role checks on e
 - [x] "What to do next" checklists, shorter menus and a Help page per role
 - [x] Responsive (375-1440 px) and keyboard accessible UI
 - [x] Multi-institution workspaces: institution sign-up, platform-owner approval/suspension, automatic data isolation, institution self-deletion with grace period
-- [x] 37 automated backend tests; browser smoke check of all Student/Supervisor/Coordinator pages
+- [x] Platform Admin console: separate admin accounts/login, first-admin setup page + `create-admin` command, add admins, institutions & coordinators management, audit log, health, platform settings
+- [x] 45 automated backend tests; browser smoke check of all Student/Supervisor/Coordinator pages
 - [x] Email verification by SMTP (tested with a local fake SMTP server; real providers not tested)
 - [x] Coordinator "Delete my account" (soft delete)
 - [x] First-login welcome guide and tips for each role

@@ -1,4 +1,4 @@
-import { GraduationCap, Presentation, ShieldCheck, BadgeCheck } from 'lucide-react';
+import { GraduationCap, Presentation, ShieldCheck, BadgeCheck, Crown } from 'lucide-react';
 import { cx } from '../../utils/format.js';
 
 export const ROLE_OPTIONS = [
@@ -6,6 +6,7 @@ export const ROLE_OPTIONS = [
   { key: 'supervisor', label: 'Supervisor', icon: Presentation, hint: 'Guide and review groups' },
   { key: 'coordinator', label: 'Coordinator', icon: ShieldCheck, hint: 'Head of department / admin' },
 ];
+export const ADMIN_OPTION = { key: 'platform', label: 'Platform admin', icon: Crown, hint: 'Website owner - manages all institutions' };
 export const EVALUATOR_OPTION = { key: 'evaluator', label: 'External evaluator', icon: BadgeCheck, hint: 'Invited by the coordinator' };
 
 /** Big, clear role cards used on both the login and the register page. */

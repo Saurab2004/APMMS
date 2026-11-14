@@ -192,7 +192,7 @@ export function DeleteInstitutionCard() {
           <div className="stack">
             <Alert tone="danger">This affects <strong>every</strong> student, supervisor and coordinator of {name}. They lose access immediately.</Alert>
             <ul className="small" style={{ paddingLeft: 18, margin: 0 }}>
-              <li>By default the data is kept for a short grace period, then erased for good. The platform administrator can restore it before then.</li>
+              <li>By default the data is kept for a short grace period, then erased for good. The APMMS administrator can restore it before then.</li>
               <li>Tick the box below to erase everything right now instead. That cannot be undone.</li>
               <li>If you only want to remove yourself, use "Delete my account" instead.</li>
             </ul>

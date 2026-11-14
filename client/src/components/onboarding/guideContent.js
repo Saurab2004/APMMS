@@ -122,14 +122,6 @@ export const HINTS = {
       'New sign-ups must verify their email. If an email cannot be delivered, use "Mark email as verified" after checking the person.',
     ],
   },
-  'coordinator.institutions': {
-    title: 'You are the platform owner',
-    items: [
-      'Each institution is a separate workspace: its people can never see another institution\'s data.',
-      'New coordinators register their institution and verify their email. It appears here as "pending" until you approve it.',
-      'Suspending blocks everyone at that institution at once (nothing is deleted). A coordinator can also delete their own institution; you can restore it during the grace period.',
-    ],
-  },
   'coordinator.settings': {
     title: 'System administration',
     items: [

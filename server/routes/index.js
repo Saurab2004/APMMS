@@ -3,7 +3,8 @@
 //   authorize(..) = role-based access control (checked on the server, not just hidden in the UI)
 // Fine-grained rules (group leader, assigned supervisor, project membership) live in services/access.js.
 import { Router } from 'express';
-import { authenticate, authorize, requirePlatformOwner } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { platformAuthenticate } from '../middleware/platformAuth.js';
 import { loginLimiter, sensitiveLimiter, verifyLimiter, resendLimiter } from '../middleware/security.js';
 import { validate } from '../utils/validate.js';
 import { upload } from '../services/storage.js';
@@ -13,6 +14,7 @@ import * as insights from '../controllers/insightsController.js';
 import * as pdf from '../controllers/pdfController.js';
 import * as users from '../controllers/userController.js';
 import * as institutions from '../controllers/institutionController.js';
+import * as platform from '../controllers/platformController.js';
 import * as academic from '../controllers/academicController.js';
 import * as groups from '../controllers/groupController.js';
 import * as projects from '../controllers/projectController.js';
@@ -34,7 +36,6 @@ const any = authenticate;
 const student = [authenticate, authorize('student')];
 const supervisor = [authenticate, authorize('supervisor')];
 const coordinator = [authenticate, authorize('coordinator')];
-const platformOwner = [authenticate, authorize('coordinator'), requirePlatformOwner];
 const staff = [authenticate, authorize('supervisor', 'coordinator')];
 const internal = [authenticate, authorize('student', 'supervisor', 'coordinator')];
 
@@ -89,10 +90,7 @@ r.patch(
 );
 
 // ---------------------------------------------------------------- users (coordinator) + lookup
-r.get('/institutions', platformOwner, institutions.listInstitutions);
 r.post('/institutions/mine/delete', coordinator, validate({ password: { required: true, max: 100 }, confirmName: { required: true, max: 200 }, eraseNow: { type: 'boolean' } }), institutions.deleteMyInstitution);
-r.post('/institutions/:id/decision', platformOwner, validate({ decision: { type: 'enum', values: ['approve', 'reject', 'suspend', 'reactivate', 'restore', 'purge'], required: true }, note: { max: 300 } }), institutions.decideInstitution);
-r.post('/institutions/platform-owner', platformOwner, validate({ userId: S.id('User', true) }), institutions.grantPlatformOwner);
 r.get('/users', coordinator, users.listUsers);
 r.get('/users/lookup-student', student, users.lookupStudent);
 r.get('/users/supervisors', coordinator, (req, _res, next) => {
@@ -413,5 +411,34 @@ r.get('/evaluations/results/:projectId/report.pdf', internal, pdf.gradeReportPdf
 r.get('/analytics/export/projects.csv', coordinator, dashboard.exportProjectsCsv);
 r.get('/audit-logs', coordinator, dashboard.listAuditLogs);
 r.get('/system/info', coordinator, dashboard.systemInfo);
+
+// ---------------------------------------------------------------- platform admin console (website owner)
+// Completely separate from institution users: own accounts, own cookie, no institution. See controllers/platformController.js
+const padmin = platformAuthenticate;
+const NAME = { required: true, min: 2, max: 120, label: 'Name' };
+r.get('/platform/public', platform.publicInfo);
+r.get('/platform/setup-status', platform.setupStatus);
+r.post('/platform/setup', sensitiveLimiter, validate({ name: NAME, email: S.email, password: { required: true, max: 100, label: 'Password' }, setupCode: { max: 200 } }), platform.setup);
+r.post('/platform/auth/login', loginLimiter, validate({ email: S.email, password: { required: true, max: 100, label: 'Password' } }), platform.login);
+r.post('/platform/auth/logout', platform.logout);
+r.get('/platform/auth/me', padmin, platform.me);
+r.post('/platform/auth/change-password', padmin, validate({ currentPassword: { required: true, max: 100 }, newPassword: { required: true, max: 100 } }), platform.changePassword);
+r.patch('/platform/auth/me', padmin, validate({ name: { min: 2, max: 120, label: 'Name' } }), platform.updateMe);
+r.get('/platform/overview', padmin, platform.overview);
+r.get('/platform/institutions', padmin, platform.listInstitutions);
+r.get('/platform/institutions/export.csv', padmin, platform.exportInstitutions);
+r.post('/platform/institutions', padmin, validate({ institutionName: { required: true, max: 160 }, institutionType: { type: 'enum', values: ['university', 'college', 'school', 'institute', 'training_center', 'other'] }, coordinatorName: NAME, coordinatorEmail: S.email }), platform.createInstitution);
+r.get('/platform/institutions/:id', padmin, platform.getInstitution);
+r.patch('/platform/institutions/:id', padmin, validate({ name: { max: 160 }, type: { type: 'enum', values: ['university', 'college', 'school', 'institute', 'training_center', 'other'] } }), platform.updateInstitution);
+r.post('/platform/institutions/:id/decision', padmin, validate({ decision: { type: 'enum', values: ['approve', 'reject', 'suspend', 'reactivate', 'restore', 'purge'], required: true }, note: { max: 300 } }), platform.decideInstitution);
+r.get('/platform/coordinators', padmin, platform.listCoordinators);
+r.post('/platform/coordinators/:id/action', padmin, validate({ action: { type: 'enum', values: ['deactivate', 'reactivate', 'reset-password', 'resend-verification', 'verify-email'], required: true } }), platform.coordinatorAction);
+r.get('/platform/admins', padmin, platform.listAdmins);
+r.post('/platform/admins', padmin, validate({ name: NAME, email: S.email }), platform.createAdmin);
+r.post('/platform/admins/:id/action', padmin, validate({ action: { type: 'enum', values: ['deactivate', 'reactivate', 'reset-password'], required: true } }), platform.adminAction);
+r.get('/platform/audit', padmin, platform.listAudit);
+r.get('/platform/health', padmin, platform.health);
+r.get('/platform/settings', padmin, platform.getSettings);
+r.put('/platform/settings', padmin, validate({ allowInstitutionRegistration: { type: 'boolean' }, loginNotice: { max: 240 } }), platform.putSettings);
 
 export default r;

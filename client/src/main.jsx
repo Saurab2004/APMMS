@@ -9,15 +9,18 @@ import App from './App.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
+import { PlatformAuthProvider } from './context/PlatformAuthContext.jsx';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <ToastProvider>
         <AuthProvider>
-          <SocketProvider>
-            <App />
-          </SocketProvider>
+          <PlatformAuthProvider>
+            <SocketProvider>
+              <App />
+            </SocketProvider>
+          </PlatformAuthProvider>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

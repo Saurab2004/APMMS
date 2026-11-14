@@ -109,11 +109,6 @@ test('coordinator can soft-delete only their own account; records are kept', asy
   const other = new User({ name: 'Second Coordinator', email: 'coord2@apmms.test', role: 'coordinator', institution: me.institution._id });
   await other.setPassword('Passw0rd1');
   await other.save();
-  // the demo coordinator is also the platform owner: they must hand that role over before leaving
-  const owner = await coord.post('/api/auth/delete-account', body);
-  assert.equal(owner.status, 409);
-  assert.match(owner.body.message, /platform owner/);
-  assert.equal((await coord.post('/api/institutions/platform-owner', { userId: String(other._id) })).status, 200);
   const projectsBefore = await Project.countDocuments();
   const res = await coord.post('/api/auth/delete-account', { ...body, userId: String(other._id) });
   assert.equal(res.status, 200, JSON.stringify(res.body));

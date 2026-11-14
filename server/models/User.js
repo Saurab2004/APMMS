@@ -49,8 +49,6 @@ const userSchema = new Schema(
       windowStart: { type: Date, select: false },
       sendCount: { type: Number, select: false },
     },
-    // The platform owner approves new institutions (set by the first-time setup).
-    isPlatformOwner: { type: Boolean, default: false },
     // Soft deletion (coordinator "Delete my account"): the row stays so projects, evaluations and audit history keep their links.
     deletedAt: { type: Date },
     // Set when the person dismisses or finishes the first-login welcome guide.

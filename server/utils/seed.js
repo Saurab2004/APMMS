@@ -4,12 +4,19 @@
 import mongoose from 'mongoose';
 import env from '../config/env.js';
 import { connectDB } from '../config/db.js';
-import { User, Department, AcademicTerm, EvaluationRubric, Institution } from '../models/index.js';
+import { User, Department, AcademicTerm, EvaluationRubric, Institution, PlatformAdmin, PlatformSetting } from '../models/index.js';
 import { runInInstitution } from './tenant.js';
 
 export const DEMO_PASSWORD = 'Demo@12345';
 
 export async function seed({ log = console.log } = {}) {
+  if (!(await PlatformAdmin.exists({ email: 'admin@apmms.test' }))) {
+    const admin = new PlatformAdmin({ name: 'Demo Platform Admin', email: 'admin@apmms.test', isFounder: !(await PlatformAdmin.exists({})) });
+    await admin.setPassword(DEMO_PASSWORD);
+    await admin.save();
+    await PlatformSetting.updateOne({ key: 'setupDone' }, { $set: { value: true } }, { upsert: true });
+    log('  created platform admin admin@apmms.test (log in on the Login page > Platform admin)');
+  }
   let inst = await Institution.findOne({ nameKey: 'demo university' });
   if (!inst) {
     inst = await Institution.create({ name: 'Demo University', nameKey: 'demo university', type: 'university', status: 'approved', decidedAt: new Date() });
@@ -35,7 +42,7 @@ async function seedInside({ log, inst }) {
   }
 
   const people = [
-    { name: 'Dr. Carol Coordinator', email: 'coordinator@apmms.test', role: 'coordinator', isPlatformOwner: true },
+    { name: 'Dr. Carol Coordinator', email: 'coordinator@apmms.test', role: 'coordinator' },
     { name: 'Prof. Sam Supervisor', email: 'supervisor@apmms.test', role: 'supervisor', designation: 'Associate Professor', department: dep._id },
     { name: 'Prof. Sara Second', email: 'supervisor2@apmms.test', role: 'supervisor', designation: 'Lecturer', department: dep._id },
     { name: 'Alice Student', email: 'alice@apmms.test', role: 'student', studentId: 'CSE-001', department: dep._id, term: term._id },

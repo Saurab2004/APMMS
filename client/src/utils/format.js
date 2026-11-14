@@ -37,4 +37,4 @@ export const toInputDateTime = (d) => {
 export const idOf = (v) => (v && typeof v === 'object' ? v._id : v);
 export const pct = (n) => (n === null || n === undefined ? '-' : `${n}%`);
 
-export const homeFor = (role) => ({ student: '/student', supervisor: '/supervisor', coordinator: '/coordinator', evaluator: '/evaluator' }[role] || '/login');
+export const homeFor = (role) => ({ student: '/student', supervisor: '/supervisor', coordinator: '/coordinator', evaluator: '/evaluator', platform: '/platform' }[role] || '/login');

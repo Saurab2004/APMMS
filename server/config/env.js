@@ -34,7 +34,10 @@ export const env = {
   maxUploadMB: Number(process.env.MAX_UPLOAD_MB) || 10,
   trustProxy: process.env.TRUST_PROXY === '1',
   // Used once to create the very first coordinator from the Register page. Empty = that option is off.
-  coordinatorSetupCode: (process.env.COORDINATOR_SETUP_CODE || '').trim(),
+  // Secret that allows creating the FIRST platform admin on /platform/setup (falls back to the old COORDINATOR_SETUP_CODE name).
+  platformSetupCode: (process.env.PLATFORM_SETUP_CODE || process.env.COORDINATOR_SETUP_CODE || '').trim(),
+  adminCookieName: 'apmms_admin',
+  adminSessionHours: Number(process.env.ADMIN_SESSION_HOURS) || 4,
   // Email (used for the verification email). Leave SMTP_HOST empty to print links on the server console instead (development only).
   appUrl: (process.env.APP_URL || process.env.CLIENT_ORIGIN || 'http://localhost:5173').replace(/\/+$/, ''),
   emailFrom: process.env.EMAIL_FROM || 'APMMS <no-reply@localhost>',

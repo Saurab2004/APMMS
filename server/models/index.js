@@ -9,3 +9,4 @@ export { Milestone, InteractionLog, Meeting } from './Monitoring.js';
 export { FeedbackThread, FeedbackComment, Conversation, Message, Notification, Announcement } from './Communication.js';
 export { EvaluationRubric, Evaluation, ExternalEvaluatorAssignment } from './Evaluation.js';
 export { SystemSetting, AuditLog, RepositoryResource } from './System.js';
+export { PlatformAdmin, PlatformAudit, PlatformSetting } from './Platform.js';
