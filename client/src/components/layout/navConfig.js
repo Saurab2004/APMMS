@@ -1,7 +1,7 @@
 import {
   LayoutDashboard, Users, UserCircle, Settings, Bell, FolderKanban, FileText, ClipboardCheck, FileCheck2, Flag, MessageSquare,
   CalendarDays, MessagesSquare, Library, History, UsersRound, UserPlus, LogIn, Mail, Archive, Lightbulb, FilePlus2, BookOpenCheck,
-  Building2, GraduationCap, UserCheck, BarChart3, Megaphone, ShieldCheck, ScrollText, Server, Award, UserCog, ListChecks, Activity, Gauge, LifeBuoy,
+  Building2, GraduationCap, UserCheck, BarChart3, Megaphone, ShieldCheck, ScrollText, Server, Award, UserCog, ListChecks, Activity, Gauge, LifeBuoy, Layers,
 } from 'lucide-react';
 
 // Every role's sidebar lives here. The server enforces permissions - this only decides what is shown.
@@ -77,6 +77,7 @@ export const NAV = {
     ] },
     { title: 'Setup & system', items: [
       { to: '/coordinator/departments', label: 'Departments', icon: Building2 },
+      { to: '/coordinator/batches', label: 'Batches', icon: Layers },
       { to: '/coordinator/academic', label: 'Academic terms', icon: GraduationCap },
       { to: '/coordinator/announcements', label: 'Announcements', icon: Megaphone },
       { to: '/coordinator/settings', label: 'Settings', icon: Gauge },

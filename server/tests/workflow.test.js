@@ -35,7 +35,7 @@ test('security basics: auth required, CSRF header required, RBAC enforced', asyn
   const reg = await anon.get('/api/auth/registration-options');
   const inst = reg.body.data.institutions[0];
   const depId = inst.departments[0]._id;
-  const r = await new Client().post('/api/auth/register', { name: 'Eve New', email: 'eve@apmms.test', password: 'Passw0rd1', studentId: 'CSE-099', institutionId: inst._id, departmentId: depId, role: 'student' });
+  const r = await new Client().post('/api/auth/register', { name: 'Eve New', email: 'eve@apmms.test', password: 'Passw0rd1', studentId: 'CSE-099', institutionId: inst._id, departmentId: depId, batchId: inst.departments[0].batches[0]._id, role: 'student' });
   assert.equal(r.status, 201);
   assert.equal(r.body.data.verificationRequired, true, 'students must verify their email first (no automatic login)');
   assert.equal(r.body.data.user, undefined);

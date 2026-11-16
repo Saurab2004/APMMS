@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import env from '../config/env.js';
-import { User, Department, AcademicTerm, Institution } from '../models/index.js';
+import { User, Department, AcademicTerm, Batch, Institution } from '../models/index.js';
+import { syncStudentTerm } from '../services/batches.js';
 import { notify } from '../services/notifications.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, passwordProblem, sha256 } from '../utils/helpers.js';
@@ -15,7 +16,7 @@ import { activateNewInstitution } from '../services/institutionActivation.js';
 import { PlatformAdmin } from '../models/index.js';
 import { getPlatformSettings } from '../services/platformSettings.js';
 
-const populatedUser = (id) => User.findById(id).populate('department', 'name code').populate('term', 'name academicYear semester').populate('institution', 'name type status');
+const populatedUser = (id) => User.findById(id).populate('department', 'name code').populate('term', 'name academicYear semester').populate('batch', 'name').populate('institution', 'name type status');
 
 const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
@@ -67,13 +68,17 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
   const platform = await getPlatformSettings();
   const institutions = await Institution.find({ status: 'approved' }).select('name type').sort('name').lean();
   const departments = await Department.find({ isActive: true, institution: { $in: institutions.map((i) => i._id) } }).select('name code institution').sort('name').lean();
+  const batches = await Batch.find({ status: 'active', allowSignup: true, institution: { $in: institutions.map((i) => i._id) } }).select('name department intakeYear').sort({ intakeYear: -1, name: 1 }).lean();
   const out = [];
   for (const inst of institutions) {
     const settings = await getSettings(inst._id);
     out.push({
       _id: inst._id, name: inst.name, type: inst.type,
       allowSelfRegistration: settings.allowSelfRegistration,
-      departments: departments.filter((d) => String(d.institution) === String(inst._id)).map((d) => ({ _id: d._id, name: d.name, code: d.code })),
+      departments: departments.filter((d) => String(d.institution) === String(inst._id)).map((d) => ({
+        _id: d._id, name: d.name, code: d.code,
+        batches: batches.filter((b) => String(b.department) === String(d._id)).map((b) => ({ _id: b._id, name: b.name })),
+      })),
     });
   }
   ok(res, {
@@ -89,7 +94,7 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
  *  - coordinator: registers a NEW institution (see registerCoordinator)
  */
 export const register = asyncHandler(async (req, res) => {
-  const { name, email, password, studentId, departmentId, institutionId, institutionName, institutionType, departmentName, role = 'student', designation } = req.body;
+  const { name, email, password, studentId, departmentId, batchId, institutionId, institutionName, institutionType, departmentName, role = 'student', designation } = req.body;
   if (!['student', 'supervisor', 'coordinator'].includes(role)) throw new AppError('Choose Student, Supervisor or Coordinator', 422, { role: 'Invalid role' });
   const problem = passwordProblem(password);
   if (problem) throw new AppError(problem, 422, { password: problem });
@@ -119,8 +124,17 @@ export const register = asyncHandler(async (req, res) => {
 
   if (!studentId || String(studentId).trim().length < 2) throw new AppError('Student ID is required', 422, { studentId: 'Required' });
   if (await User.exists({ studentId, institution: institution._id })) throw new AppError('This student ID is already registered at this institution', 409, { studentId: 'Already registered' });
-  const term = await AcademicTerm.findOne({ isCurrent: true, institution: institution._id });
+  // The student picks the batch of their department. If the department has no open batch yet, fall back to the default term.
+  const openBatches = await Batch.find({ department: department._id, status: 'active', allowSignup: true });
+  let batch = null;
+  if (openBatches.length) {
+    if (!batchId) throw new AppError('Please choose your batch', 422, { batchId: 'Required' });
+    batch = openBatches.find((b) => String(b._id) === String(batchId));
+    if (!batch) throw new AppError('Please choose a valid batch of your department', 422, { batchId: 'Invalid batch' });
+  }
+  const term = batch?.term ? null : await AcademicTerm.findOne({ isCurrent: true, institution: institution._id });
   const user = new User({ name, email, role: 'student', institution: institution._id, studentId, department: department._id, term: term?._id, emailVerified: false });
+  if (batch) syncStudentTerm(user, batch);
   await user.setPassword(password);
   await user.save();
   // No login cookie yet: the student must open the emailed link first.

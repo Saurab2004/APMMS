@@ -41,7 +41,7 @@ export function GroupManagePage() {
 
   return (
     <>
-      <PageHeader title={group.name} subtitle={`${group.term?.name} - ${group.department?.name}`} actions={!leader || members.length > 1 ? <Button variant="secondary" icon={LogOut} onClick={() => setConfirm({ title: 'Leave group', msg: leader ? 'Leadership must be transferred before you can leave.' : 'You will lose access to this group\'s project.', run: () => act(() => post(`/groups/${group._id}/leave`), 'You left the group'), disabled: leader })}>Leave group</Button> : null} />
+      <PageHeader title={group.name} subtitle={`${group.batch?.name ? `${group.batch.name} - ` : ''}${group.term?.name} - ${group.department?.name}`} actions={!leader || members.length > 1 ? <Button variant="secondary" icon={LogOut} onClick={() => setConfirm({ title: 'Leave group', msg: leader ? 'Leadership must be transferred before you can leave.' : 'You will lose access to this group\'s project.', run: () => act(() => post(`/groups/${group._id}/leave`), 'You left the group'), disabled: leader })}>Leave group</Button> : null} />
       <Hint id="student.group" />
       <div className="row mb"><Button size="sm" variant="secondary" to="/student/invitations">Invitations</Button><Button size="sm" variant="secondary" to="/student/group/join">Join with a code</Button><Button size="sm" variant="secondary" to="/student/groups/past">Past groups</Button></div>
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0,2fr) minmax(0,1fr)', alignItems: 'start' }}>
@@ -95,7 +95,7 @@ export function CreateGroupPage() {
       <PageHeader title="Create a group" subtitle="You become the Group Leader and can invite classmates afterwards." />
       <Card style={{ maxWidth: 520 }}><CardBody>
         {error && <Alert tone="danger" className="mb">{error}</Alert>}
-        <form className="stack" onSubmit={submit}><Field label="Group name" required help="3-80 characters, unique within the current semester."><Input value={name} onChange={(e) => setName(e.target.value)} minLength={3} maxLength={80} required /></Field>
+        <form className="stack" onSubmit={submit}><Field label="Group name" required help="3-80 characters, unique within your term."><Input value={name} onChange={(e) => setName(e.target.value)} minLength={3} maxLength={80} required /></Field>
           <div><Button type="submit" icon={UserPlus} loading={busy} disabled={name.trim().length < 3}>Create group</Button></div></form>
       </CardBody></Card>
     </>

@@ -16,6 +16,7 @@ export const listProjects = asyncHandler(async (req, res) => {
   if (PROJECT_STATUS.includes(req.query.status)) filter.status = req.query.status;
   if (isId(req.query.department)) filter.department = req.query.department;
   if (isId(req.query.term)) filter.term = req.query.term;
+  if (isId(req.query.batch)) filter.batch = req.query.batch;
   if (req.query.supervisor === 'none') filter.supervisor = { $exists: false };
   else if (isId(req.query.supervisor)) filter.supervisor = req.query.supervisor;
   if (req.query.q) {
@@ -30,6 +31,7 @@ export const listProjects = asyncHandler(async (req, res) => {
       .populate('supervisor', 'name email')
       .populate('department', 'name code')
       .populate('term', 'name')
+      .populate('batch', 'name')
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(limit)

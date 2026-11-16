@@ -4,7 +4,7 @@
 import mongoose from 'mongoose';
 import env from '../config/env.js';
 import { connectDB } from '../config/db.js';
-import { User, Department, AcademicTerm, EvaluationRubric, Institution, PlatformAdmin, PlatformSetting } from '../models/index.js';
+import { User, Department, AcademicTerm, Batch, EvaluationRubric, Institution, PlatformAdmin, PlatformSetting } from '../models/index.js';
 import { runInInstitution } from './tenant.js';
 
 export const DEMO_PASSWORD = 'Demo@12345';
@@ -41,13 +41,16 @@ async function seedInside({ log, inst }) {
     });
   }
 
+  let batch = await Batch.findOne({ department: dep._id, name: `${year} Batch` });
+  if (!batch) batch = await Batch.create({ name: `${year} Batch`, department: dep._id, intakeYear: year, term: term._id });
+
   const people = [
     { name: 'Dr. Carol Coordinator', email: 'coordinator@apmms.test', role: 'coordinator' },
     { name: 'Prof. Sam Supervisor', email: 'supervisor@apmms.test', role: 'supervisor', designation: 'Associate Professor', department: dep._id },
     { name: 'Prof. Sara Second', email: 'supervisor2@apmms.test', role: 'supervisor', designation: 'Lecturer', department: dep._id },
-    { name: 'Alice Student', email: 'alice@apmms.test', role: 'student', studentId: 'CSE-001', department: dep._id, term: term._id },
-    { name: 'Bob Student', email: 'bob@apmms.test', role: 'student', studentId: 'CSE-002', department: dep._id, term: term._id },
-    { name: 'Chitra Student', email: 'chitra@apmms.test', role: 'student', studentId: 'CSE-003', department: dep._id, term: term._id },
+    { name: 'Alice Student', email: 'alice@apmms.test', role: 'student', studentId: 'CSE-001', department: dep._id, term: term._id, batch: batch._id },
+    { name: 'Bob Student', email: 'bob@apmms.test', role: 'student', studentId: 'CSE-002', department: dep._id, term: term._id, batch: batch._id },
+    { name: 'Chitra Student', email: 'chitra@apmms.test', role: 'student', studentId: 'CSE-003', department: dep._id, term: term._id, batch: batch._id },
   ];
   for (const p of people) {
     if (await User.exists({ email: p.email })) continue;
@@ -70,7 +73,7 @@ async function seedInside({ log, inst }) {
     await EvaluationRubric.create({ name: 'Final Defence - External', stage: 'Final defence', criteria, appliesTo: ['external'], gradingRules: { aggregation: 'none', bands } });
     log('  created 2 evaluation rubrics');
   }
-  return { dep, term, institution: inst };
+  return { dep, term, batch, institution: inst };
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop());

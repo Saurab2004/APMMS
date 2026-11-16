@@ -5,7 +5,8 @@ All models are in `server/models`. IDs are ObjectIds. Records are **deactivated 
 | Collection | Purpose | Key fields / relations |
 |---|---|---|
 | `users` | All accounts | `role`, `email` (unique), `passwordHash`, `studentId`, `department`, `term`, `maxProjects`, `isActive`, `approvalStatus` (approved / pending / rejected - pending and rejected users are also `isActive:false`), `tokenVersion` (changing it signs the user out everywhere), `mustChangePassword`, `accessExpiresAt` (evaluators) |
-| `departments`, `academicterms` | Structure | term has `isCurrent`, `deadlines.proposal`, `deadlines.finalReport` |
+| `departments`, `academicterms` | Structure | term has `isActive`, `deadlines.proposal`, `deadlines.finalReport`; `isCurrent` is only the default term for students without a batch. Many terms can be active at once |
+| `batches` | One intake of one department (e.g. "2023 Batch") | `department`, `intakeYear`, `term` (the term it works in now), `status` active/completed, `allowSignup`. Students (`users.batch`), groups and projects carry the batch; their `term` follows the batch's term |
 | `projectgroups` | Student groups | `members[{user, role: leader/member, status}]`, `activeMemberIds` (indexed copy for fast lookup), join `code`, `status` |
 | `groupinvitations` | Invitations | group, email, status, `expiresAt` |
 | `projects` | One per group | `group`, `supervisor`, `supervisorHistory[]`, `status` (forming → proposal → active → final_review → ready_for_evaluation → evaluated → completed → archived), `resultsPublished` |

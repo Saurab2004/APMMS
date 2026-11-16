@@ -64,11 +64,11 @@ test('students and supervisors join the institution they choose; departments can
   const demo = o.institutions.find((i) => i.name === 'Demo University');
   assert.equal(beta.departments.length, 1, 'the first department made at sign-up');
   // wrong department for the chosen institution
-  const bad = await anon().post('/api/auth/register', { name: 'Mix Up', email: 'mix@beta.test', password: PW, role: 'student', studentId: 'B-1', institutionId: beta._id, departmentId: demo.departments[0]._id });
+  const bad = await anon().post('/api/auth/register', { name: 'Mix Up', email: 'mix@beta.test', password: PW, role: 'student', studentId: 'B-1', institutionId: beta._id, departmentId: demo.departments[0]._id, batchId: demo.departments[0].batches[0]?._id });
   assert.equal(bad.status, 422);
   // same student id and same department name may exist in two institutions
   for (const [inst, email] of [[demo, 'sid@demo.test'], [beta, 'sid@beta.test']]) {
-    const r = await anon().post('/api/auth/register', { name: 'Same Id', email, password: PW, role: 'student', studentId: 'SAME-001', institutionId: inst._id, departmentId: inst.departments[0]._id });
+    const r = await anon().post('/api/auth/register', { name: 'Same Id', email, password: PW, role: 'student', studentId: 'SAME-001', institutionId: inst._id, departmentId: inst.departments[0]._id, batchId: inst.departments[0].batches[0]?._id });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     await verify(email);
   }

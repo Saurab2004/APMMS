@@ -1,6 +1,6 @@
 # Testing guide
 
-## Automated backend tests (45)
+## Automated backend tests (53)
 ```
 cd server
 npm test
@@ -14,6 +14,12 @@ npm test
 ## Institutions (new)
 
 `server/tests/institutions.test.js` (11 tests): institution sign-up and automatic activation after email verification; platform-owner suspend/reject; students/supervisors joining the chosen institution; **isolation** of users, departments, settings, rubrics, audit logs, analytics, groups, join codes, projects and supervisor assignment between two institutions; suspension blocking existing sessions; institution self-deletion (blocked at once, restore, grace-period purge, erase now, uploaded files removed from disk); first-time platform setup with and without the setup code; migration of an old database into "Default Institution".
+
+## Batches and terms (new)
+
+`server/tests/batches.test.js` (8 tests): two terms active at once; a department with several batches; student sign-up lists the batches of the chosen department and requires one (a batch of another department is refused); two batches in two terms at the same time (groups, projects and deadlines follow each batch, one supervisor works with both and can filter by batch, the workload view and the calendar show both); no joining, inviting or batch switching across batches; moving a whole batch to the next term (students and unfinished groups follow); completed batches (closed for sign-up and new groups, hidden from everyday lists); students without a batch use the default term and get a clear message if none is set; migration of students and groups from before batches into "Existing students".
+
+Browser check (Playwright, done in the sandbox): Batches page (add batch, move term), the Batch dropdown on the sign-up page after choosing a department, group creation, and the batch filters.
 
 ## Platform admin console (new)
 

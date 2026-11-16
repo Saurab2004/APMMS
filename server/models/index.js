@@ -1,7 +1,7 @@
 import './tenantPlugin.js';
 export { Institution, INSTITUTION_TYPES, INSTITUTION_STATUS } from './Institution.js';
 export { User, ROLES } from './User.js';
-export { Department, AcademicTerm } from './Academic.js';
+export { Department, AcademicTerm, Batch } from './Academic.js';
 export { ProjectGroup, GroupInvitation, Project } from './Group.js';
 export { Proposal, ProposalVersion } from './Proposal.js';
 export { ProgressReport, ReportVersion, ReportReview, REPORT_TYPES } from './Report.js';

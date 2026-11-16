@@ -38,7 +38,8 @@ JWT in an HttpOnly cookie, CSRF header guard, bcrypt passwords, role checks on e
 - [x] Responsive (375-1440 px) and keyboard accessible UI
 - [x] Multi-institution workspaces: institution sign-up, platform-owner approval/suspension, automatic data isolation, institution self-deletion with grace period
 - [x] Platform Admin console: separate admin accounts/login, first-admin setup page + `create-admin` command, add admins, institutions & coordinators management, audit log, health, platform settings
-- [x] 45 automated backend tests; browser smoke check of all Student/Supervisor/Coordinator pages
+- [x] Batches: a department has many batches (e.g. 2022, 2023, 2024); each batch works in its own term with its own deadlines; students pick their batch at sign-up; one supervisor can work with several batches; batch filters and workload view
+- [x] 53 automated backend tests; browser smoke check of all Student/Supervisor/Coordinator pages
 - [x] Email verification by SMTP (tested with a local fake SMTP server; real providers not tested)
 - [x] Coordinator "Delete my account" (soft delete)
 - [x] First-login welcome guide and tips for each role

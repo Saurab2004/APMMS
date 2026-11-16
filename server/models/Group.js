@@ -21,6 +21,7 @@ const groupSchema = new Schema(
     nameKey: { type: String, required: true }, // lower-case name for uniqueness inside a term
     code: { type: String, required: true, unique: true }, // join code
     term: { type: Schema.Types.ObjectId, ref: 'AcademicTerm', required: true },
+    batch: { type: Schema.Types.ObjectId, ref: 'Batch', index: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     members: { type: [memberSchema], default: [] }, // bounded by the group-size rule
@@ -67,6 +68,7 @@ const projectSchema = new Schema(
   {
     group: { type: Schema.Types.ObjectId, ref: 'ProjectGroup', required: true, unique: true },
     term: { type: Schema.Types.ObjectId, ref: 'AcademicTerm', required: true },
+    batch: { type: Schema.Types.ObjectId, ref: 'Batch', index: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
     title: { type: String, trim: true, maxlength: 200, default: 'Untitled project' },
     summary: { type: String, trim: true, maxlength: 2000 },

@@ -4,9 +4,11 @@
 //   1. old "unique across everything" indexes are replaced by "unique inside one institution" ones
 //   2. records without an institution are moved into ONE institution named "Default Institution"
 //      (change the name later in the database if you like) so existing users keep seeing their data
-//   3. institutions still "pending" whose coordinator has verified the email are activated
+//   3. students and groups without a batch are put into one batch per department called "Existing students"
+//      (rename it later; the coordinator can then move students into proper batches)
+//   4. institutions still "pending" whose coordinator has verified the email are activated
 import mongoose from 'mongoose';
-import { Institution, User } from '../models/index.js';
+import { Institution, User, Department, AcademicTerm, Batch, ProjectGroup, Project } from '../models/index.js';
 import { runUnscoped } from '../utils/tenant.js';
 
 const LEGACY_INDEXES = [
@@ -45,5 +47,29 @@ export async function migrateToInstitutions({ log = console.log } = {}) {
       await User.collection.updateOne({ _id: c._id }, { $set: { approvalStatus: 'approved', isActive: true } });
       log(`[migrate] activated "${inst.name}" (its coordinator had verified the email)`);
     }
+
+    await batchExistingStudents(log);
   });
+}
+
+// Students and groups created before batches existed get a starting batch, so nothing is left without one.
+async function batchExistingStudents(log) {
+  for (const dep of await Department.find({})) {
+    const students = await User.find({ role: 'student', department: dep._id, institution: dep.institution, batch: { $exists: false } }).select('term').lean();
+    const groups = await ProjectGroup.find({ department: dep._id, institution: dep.institution, batch: { $exists: false } }).select('term').lean();
+    if (!students.length && !groups.length) continue;
+    let batch = await Batch.findOne({ department: dep._id, name: 'Existing students' });
+    if (!batch) {
+      const counts = new Map();
+      for (const x of [...students, ...groups]) if (x.term) counts.set(String(x.term), (counts.get(String(x.term)) || 0) + 1);
+      const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const term = (top && (await AcademicTerm.findById(top))) || (await AcademicTerm.findOne({ institution: dep.institution, isCurrent: true }));
+      batch = await Batch.create({ institution: dep.institution, department: dep._id, name: 'Existing students', term: term?._id, intakeYear: term?.startDate?.getFullYear(), allowSignup: false, note: 'Created automatically for students who registered before batches existed. Rename it or move students to their real batches.' });
+    }
+    await User.updateMany({ _id: { $in: students.map((x) => x._id) } }, { $set: { batch: batch._id } });
+    const gids = groups.map((x) => x._id);
+    await ProjectGroup.updateMany({ _id: { $in: gids } }, { $set: { batch: batch._id } });
+    await Project.updateMany({ group: { $in: gids }, batch: { $exists: false } }, { $set: { batch: batch._id } });
+    log(`[migrate] "${dep.name}": ${students.length} students and ${groups.length} groups put into the batch "Existing students"`);
+  }
 }

@@ -14,7 +14,8 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ROLES, required: true, index: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department' },
-    term: { type: Schema.Types.ObjectId, ref: 'AcademicTerm' }, // intake term (students)
+    batch: { type: Schema.Types.ObjectId, ref: 'Batch', index: true }, // students: their intake batch
+    term: { type: Schema.Types.ObjectId, ref: 'AcademicTerm' }, // students: follows the batch's current term
     studentId: { type: String, trim: true, maxlength: 40 },
     phone: { type: String, trim: true, maxlength: 30 },
     bio: { type: String, trim: true, maxlength: 600 },

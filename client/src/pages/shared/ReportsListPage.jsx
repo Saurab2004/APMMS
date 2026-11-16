@@ -24,6 +24,7 @@ export default function ReportsListPage({ title, subtitle, kind, needsReview, ba
   const list = usePaged('/reports', { limit: 12, initialFilters: { kind: kind || '', needsReview: needsReview ? '1' : '' }, initialSort: { key: 'submittedAt', dir: 'desc' } });
   const deps = useAsync(() => (isCoord ? get('/departments') : Promise.resolve([])), []);
   const terms = useAsync(() => (isCoord ? get('/academic-terms') : Promise.resolve([])), []);
+  const batches = useAsync(() => (staff ? get('/batches') : Promise.resolve([])), []);
   const sups = useAsync(() => (isCoord ? get('/users/supervisors') : Promise.resolve([])), []);
 
   const columns = [
@@ -52,6 +53,7 @@ export default function ReportsListPage({ title, subtitle, kind, needsReview, ba
           <option value="">Any timing</option><option value="late">Submitted late</option><option value="overdue">Overdue (not submitted)</option>
         </Select>
         {staff && <ProjectSelect allowAll value={list.filters.project || ''} onChange={(v) => list.setFilter('project', v)} aria-label="Project" style={{ width: 'auto', minWidth: 170 }} />}
+        {staff && <Select aria-label="Batch" value={list.filters.batch || ''} onChange={(e) => list.setFilter('batch', e.target.value)}><option value="">All batches</option>{(batches.data || []).map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select>}
         {isCoord && <>
           <Select aria-label="Department" value={list.filters.department || ''} onChange={(e) => list.setFilter('department', e.target.value)}><option value="">All departments</option>{(deps.data || []).map((d) => <option key={d._id} value={d._id}>{d.code}</option>)}</Select>
           <Select aria-label="Semester" value={list.filters.term || ''} onChange={(e) => list.setFilter('term', e.target.value)}><option value="">All semesters</option>{(terms.data || []).map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}</Select>

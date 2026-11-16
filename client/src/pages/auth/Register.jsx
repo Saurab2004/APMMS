@@ -27,7 +27,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  const f = useForm({ name: '', email: '', studentId: '', departmentId: '', designation: '', institutionId: '', institutionName: '', institutionType: 'university', departmentName: '', password: '', confirm: '' });
+  const f = useForm({ name: '', email: '', studentId: '', departmentId: '', batchId: '', designation: '', institutionId: '', institutionName: '', institutionType: 'university', departmentName: '', password: '', confirm: '' });
 
   useEffect(() => { get('/auth/registration-options').then(setOpts).catch((e) => setError(errMsg(e))); }, []);
   if (user && !done) return <Navigate to={homeFor(user.role)} replace />;
@@ -35,6 +35,7 @@ export default function Register() {
   const v = f.values;
   const platform = opts?.platform;
   const institution = opts?.institutions.find((i) => i._id === v.institutionId);
+  const department = institution?.departments.find((d) => d._id === v.departmentId);
   const selfOff = role !== 'coordinator' && institution && !institution.allowSelfRegistration;
   const coordOff = role === 'coordinator' && platform && !platform.allowInstitutionRegistration;
   const coordIntro = 'Register your institution as its coordinator. After you verify your email your institution is activated automatically (no other institution is involved). Then you can log in and set up departments, terms and users.';
@@ -46,7 +47,7 @@ export default function Register() {
     setBusy(true);
     try {
       const r = await register({ role, name: v.name, email: v.email, password: v.password, studentId: role === 'student' ? v.studentId : undefined,
-        institutionId: role === 'coordinator' ? undefined : v.institutionId, departmentId: role === 'coordinator' ? undefined : v.departmentId,
+        institutionId: role === 'coordinator' ? undefined : v.institutionId, departmentId: role === 'coordinator' ? undefined : v.departmentId, batchId: role === 'student' ? v.batchId || undefined : undefined,
         institutionName: role === 'coordinator' ? v.institutionName : undefined, institutionType: role === 'coordinator' ? v.institutionType : undefined, departmentName: role === 'coordinator' ? v.departmentName || undefined : undefined,
         designation: role === 'supervisor' ? v.designation : undefined });
       if (r.verificationRequired || r.pending) setDone({ message: r.message, email: r.email || v.email, emailSent: r.emailSent });
@@ -101,11 +102,20 @@ export default function Register() {
               </Select>
             </Field>
             <Field label="Department" required error={f.errors.departmentId}>
-              <Select {...f.bind('departmentId')} required disabled={!institution}>
+              <Select value={v.departmentId} onChange={(e) => { f.set('departmentId', e.target.value); f.set('batchId', ''); }} required disabled={!institution}>
                 <option value="">{institution ? 'Select department' : 'Choose an institution first'}</option>
                 {(institution?.departments || []).map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
               </Select>
             </Field>
+            {role === 'student' && department && department.batches?.length > 0 && (
+              <Field label="Batch" required error={f.errors.batchId} help="Your intake, for example the year you joined. Your groups and deadlines follow your batch.">
+                <Select {...f.bind('batchId')} required>
+                  <option value="">Select your batch</option>
+                  {department.batches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
+                </Select>
+              </Field>
+            )}
+            {role === 'student' && department && !department.batches?.length && <Alert tone="info">This department has not opened a batch yet. You can still sign up; the coordinator will place you in your batch later.</Alert>}
             {institution && institution.departments.length === 0 && <Alert tone="warning">{institution.name} has not added any department yet. Please ask its coordinator.</Alert>}
           </>)}
           {role === 'coordinator' && (<>

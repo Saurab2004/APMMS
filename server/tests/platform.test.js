@@ -82,7 +82,7 @@ test('adding admins: temporary password, forced change, deactivate / reactivate,
   assert.equal((await second.get('/api/platform/overview')).status, 200, 'works after the change, same browser stays logged in');
 
   // a normal sign-up cannot reuse an admin's email (the forgot-password link would be ambiguous)
-  const reg = await anon().post('/api/auth/register', { name: 'Sneaky', email: 'second@site.test', password: PW, role: 'student', studentId: 'X-1', institutionId: (await Institution.findOne({ nameKey: 'demo university' }))._id, departmentId: (await (await import('../models/index.js')).Department.findOne({}))._id });
+  const reg = await anon().post('/api/auth/register', { name: 'Sneaky', email: 'second@site.test', password: PW, role: 'student', studentId: 'X-1', institutionId: (await Institution.findOne({ nameKey: 'demo university' }))._id, departmentId: (await (await import('../models/index.js')).Department.findOne({}))._id, batchId: (await (await import('../models/index.js')).Batch.findOne({}))._id });
   assert.equal(reg.status, 409);
 
   const list = (await S.founder.get('/api/platform/admins')).body.data;
@@ -202,7 +202,7 @@ test('platform settings: switch off new institution sign-up, login notice', asyn
   assert.equal(r.status, 403);
   // students and supervisors can still join existing institutions
   const demo = o.institutions.find((i) => i.name === 'Demo University');
-  assert.equal((await anon().post('/api/auth/register', { name: 'Still Ok', email: 'stillok@x.test', password: PW, role: 'student', studentId: 'OK-1', institutionId: demo._id, departmentId: demo.departments[0]._id })).status, 201);
+  assert.equal((await anon().post('/api/auth/register', { name: 'Still Ok', email: 'stillok@x.test', password: PW, role: 'student', studentId: 'OK-1', institutionId: demo._id, departmentId: demo.departments[0]._id, batchId: demo.departments[0].batches[0]?._id })).status, 201);
   await S.founder.put('/api/platform/settings', { allowInstitutionRegistration: true, loginNotice: '' });
   assert.equal((await anon().get('/api/auth/registration-options')).body.data.platform.allowInstitutionRegistration, true);
 });

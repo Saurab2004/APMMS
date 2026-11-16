@@ -11,15 +11,16 @@ import { errMsg, get, put } from '../../services/api.js';
 import { PROJECT_STATUSES } from '../../utils/constants.js';
 import { titleCase } from '../../utils/format.js';
 
-const useLookups = () => useAsync(() => Promise.all([get('/departments'), get('/academic-terms'), get('/users', { role: 'supervisor', active: 'true', withWorkload: 1, limit: 100 })]), []);
+const useLookups = () => useAsync(() => Promise.all([get('/departments'), get('/academic-terms'), get('/users', { role: 'supervisor', active: 'true', withWorkload: 1, limit: 100 }), get('/batches')]), []);
 
 export function CoordinatorProjectsPage() {
   const list = usePaged('/projects', { initialSort: undefined });
   const lk = useLookups();
-  const [deps, terms] = lk.data || [[], []];
+  const [deps, terms, , batches] = lk.data || [[], [], [], []];
   const cols = [
     { key: 'title', header: 'Project', render: (p) => <><Link to={`/coordinator/projects/${p._id}`}><strong>{p.group?.name}</strong></Link><div className="muted small truncate" style={{ maxWidth: 320 }}>{p.title}</div></> },
     { key: 'dept', header: 'Dept', render: (p) => p.department?.code || '-' },
+    { key: 'batch', header: 'Batch / term', render: (p) => <>{p.batch?.name || '-'}<div className="muted small">{p.term?.name}</div></> },
     { key: 'sup', header: 'Supervisor', render: (p) => p.supervisor?.name || <Badge tone="warning">Not assigned</Badge> },
     { key: 'status', header: 'Stage', render: (p) => <StatusBadge status={p.status} /> },
     { key: 'progress', header: 'Progress', render: (p) => <div style={{ minWidth: 110 }}><ProgressBar value={p.progress ?? 0} tone={p.overdue ? 'danger' : undefined} /><span className="muted small">{p.progress ?? 0}%{p.overdue ? ` - ${p.overdue} overdue` : ''}</span></div> },
@@ -31,6 +32,7 @@ export function CoordinatorProjectsPage() {
         <SearchInput value={list.q} onChange={list.setQ} placeholder="Search project or group" />
         <Select aria-label="Stage" value={list.filters.status || ''} onChange={(e) => list.setFilter('status', e.target.value)} style={{ width: 190 }}><option value="">All stages</option>{PROJECT_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}</Select>
         <Select aria-label="Department" value={list.filters.department || ''} onChange={(e) => list.setFilter('department', e.target.value)} style={{ width: 170 }}><option value="">All departments</option>{deps.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}</Select>
+        <Select aria-label="Batch" value={list.filters.batch || ''} onChange={(e) => list.setFilter('batch', e.target.value)} style={{ width: 170 }}><option value="">All batches</option>{batches.map((b) => <option key={b._id} value={b._id}>{b.name} ({b.department?.code})</option>)}</Select>
         <Select aria-label="Term" value={list.filters.term || ''} onChange={(e) => list.setFilter('term', e.target.value)} style={{ width: 160 }}><option value="">All terms</option>{terms.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}</Select>
         <Select aria-label="Supervisor" value={list.filters.supervisor || ''} onChange={(e) => list.setFilter('supervisor', e.target.value)} style={{ width: 180 }}><option value="">Any supervisor</option><option value="none">Not assigned</option></Select>
       </CardBody></Card>
@@ -61,6 +63,7 @@ export function SupervisorAssignmentPage() {
   const cols = [
     { key: 'g', header: 'Group', render: (p) => <><strong>{p.group?.name}</strong><div className="muted small">{p.title}</div></> },
     { key: 'dept', header: 'Dept', render: (p) => p.department?.code || '-' },
+    { key: 'batch', header: 'Batch / term', render: (p) => <>{p.batch?.name || '-'}<div className="muted small">{p.term?.name}</div></> },
     { key: 'status', header: 'Stage', render: (p) => <StatusBadge status={p.status} /> },
     { key: 'sup', header: 'Supervisor', render: (p) => p.supervisor?.name || <Badge tone="warning">Not assigned</Badge> },
     { key: 'a', header: '', render: (p) => <Button size="sm" variant={p.supervisor ? 'secondary' : 'primary'} onClick={() => { setPick(p); setSup(''); }}>{p.supervisor ? 'Reassign' : 'Assign'}</Button> },
@@ -71,6 +74,7 @@ export function SupervisorAssignmentPage() {
       <Card className="mb"><CardBody className="row">
         <SearchInput value={list.q} onChange={list.setQ} placeholder="Search project or group" />
         <Select aria-label="Show" value={list.filters.supervisor || ''} onChange={(e) => list.setFilter('supervisor', e.target.value)} style={{ width: 200 }}><option value="none">Waiting for a supervisor</option><option value="">All projects</option></Select>
+        <Select aria-label="Batch" value={list.filters.batch || ''} onChange={(e) => list.setFilter('batch', e.target.value)} style={{ width: 190 }}><option value="">All batches</option>{(lk.data?.[3] || []).map((b) => <option key={b._id} value={b._id}>{b.name} ({b.department?.code})</option>)}</Select>
       </CardBody></Card>
       <DataTable columns={cols} {...list} onPage={list.setPage} onRetry={list.reload} minWidth={640} />
       <Card className="mt"><CardBody><h3 style={{ marginTop: 0 }}>Supervisor workload</h3>

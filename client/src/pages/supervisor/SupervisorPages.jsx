@@ -13,8 +13,10 @@ import Hint from '../../components/onboarding/Hint.jsx';
 
 export function AssignedProjectsPage() {
   const list = usePaged('/projects', { limit: 12 });
+  const batches = useAsync(() => get('/batches'), []);
   const columns = [
     { key: 'title', header: 'Project', render: (p) => <div><strong>{p.title}</strong><div className="sub">{p.group?.name}</div></div> },
+    { key: 'batch', header: 'Batch / term', render: (p) => <div>{p.batch?.name || '-'}<div className="sub">{p.term?.name}</div></div> },
     { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.status} /> },
     { key: 'proposal', header: 'Proposal', render: (p) => p.proposalStatus ? <StatusBadge status={p.proposalStatus} /> : <span className="muted">-</span> },
     { key: 'progress', header: 'Progress', render: (p) => <div style={{ minWidth: 120 }}><ProgressBar value={p.progress} tone={p.overdueMilestones ? 'danger' : undefined} /><span className="sub">{p.progress}%{p.overdueMilestones ? ` - ${p.overdueMilestones} overdue` : ''}</span></div> },
@@ -22,7 +24,8 @@ export function AssignedProjectsPage() {
   ];
   return (<><PageHeader title="Assigned projects" subtitle="Groups you supervise." />
     <div className="filters"><SearchInput value={list.q} onChange={list.setQ} placeholder="Search project or group" />
-      <Select aria-label="Status" value={list.filters.status || ''} onChange={(e) => list.setFilter('status', e.target.value)}><option value="">All statuses</option>{PROJECT_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}</Select></div>
+      <Select aria-label="Status" value={list.filters.status || ''} onChange={(e) => list.setFilter('status', e.target.value)}><option value="">All statuses</option>{PROJECT_STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}</Select>
+      <Select aria-label="Batch" value={list.filters.batch || ''} onChange={(e) => list.setFilter('batch', e.target.value)}><option value="">All batches</option>{(batches.data || []).map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></div>
     <DataTable columns={columns} rows={list.rows} loading={list.loading} error={list.error} onRetry={list.reload} meta={list.meta} onPage={list.setPage} minWidth={700} empty={<EmptyState icon={FolderKanban} title="No projects assigned yet" />} /></>);
 }
 

@@ -24,16 +24,16 @@ function TempPassword({ value, onClose, name }) {
   );
 }
 
-function UserForm({ user, departments, terms, onClose, onSaved }) {
+function UserForm({ user, departments, terms, batches, onClose, onSaved }) {
   const editing = !!user;
-  const f = useForm({ name: user?.name || '', email: user?.email || '', role: user?.role || 'student', departmentId: user?.department?._id || '', termId: user?.term || '', studentId: user?.studentId || '', phone: user?.phone || '', designation: user?.designation || '', maxProjects: user?.maxProjects || '' });
+  const f = useForm({ name: user?.name || '', email: user?.email || '', role: user?.role || 'student', departmentId: user?.department?._id || '', termId: user?.term || '', batchId: user?.batch?._id || '', studentId: user?.studentId || '', phone: user?.phone || '', designation: user?.designation || '', maxProjects: user?.maxProjects || '' });
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const v = f.values;
   const submit = async (e) => {
     e.preventDefault(); setBusy(true);
     try {
-      const body = { name: v.name, phone: v.phone, departmentId: v.departmentId || undefined, termId: v.termId || undefined, studentId: v.studentId || undefined, designation: v.designation || undefined, maxProjects: v.maxProjects ? Number(v.maxProjects) : undefined };
+      const body = { name: v.name, phone: v.phone, departmentId: v.departmentId || undefined, termId: v.termId || undefined, batchId: v.role === 'student' ? v.batchId || undefined : undefined, studentId: v.studentId || undefined, designation: v.designation || undefined, maxProjects: v.maxProjects ? Number(v.maxProjects) : undefined };
       const res = editing ? await patch(`/users/${user._id}`, body) : await post('/users', { ...body, email: v.email, role: v.role });
       toast.success(editing ? 'User updated' : 'Account created');
       onSaved(res.temporaryPassword ? { password: res.temporaryPassword, name: v.name } : null);
@@ -48,7 +48,8 @@ function UserForm({ user, departments, terms, onClose, onSaved }) {
         {v.role !== 'coordinator' && <Field label="Department" required error={f.errors.departmentId}><Select {...f.bind('departmentId')}><option value="">Select...</option>{departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}</Select></Field>}
         {v.role === 'student' && <>
           <Field label="Student ID" required error={f.errors.studentId}><Input {...f.bind('studentId')} maxLength={30} /></Field>
-          <Field label="Academic term" help="Defaults to the current term." error={f.errors.termId}><Select {...f.bind('termId')}><option value="">Current term</option>{terms.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}</Select></Field></>}
+          <Field label="Batch" help="The student's groups and deadlines follow this batch's term." error={f.errors.batchId}><Select {...f.bind('batchId')}><option value="">{batches.some((b) => b.department?._id === v.departmentId) ? 'Select batch...' : 'No batch in this department'}</option>{batches.filter((b) => b.department?._id === v.departmentId).map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>
+          <Field label="Academic term" help="Only used when the student has no batch (defaults to the default term)." error={f.errors.termId}><Select {...f.bind('termId')}><option value="">Current term</option>{terms.map((t) => <option key={t._id} value={t._id}>{t.name}</option>)}</Select></Field></>}
         {v.role === 'supervisor' && <>
           <Field label="Designation" error={f.errors.designation}><Input {...f.bind('designation')} maxLength={80} /></Field>
           <Field label="Maximum projects" error={f.errors.maxProjects}><Input type="number" min={1} max={50} {...f.bind('maxProjects')} /></Field></>}
@@ -95,7 +96,7 @@ export default function UsersPage() {
   const { user: me } = useAuth();
   const toast = useToast();
   const list = usePaged('/users', { initialSort: { key: 'createdAt', dir: 'desc' } });
-  const deps = useAsync(() => Promise.all([get('/departments'), get('/academic-terms')]), []);
+  const deps = useAsync(() => Promise.all([get('/departments'), get('/academic-terms'), get('/batches')]), []);
   const [form, setForm] = useState(null); // {user?}
   const [confirm, setConfirm] = useState(null); // {type,user}
   const [temp, setTemp] = useState(null);
@@ -112,11 +113,12 @@ export default function UsersPage() {
     } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
 
-  const [departments, terms] = deps.data || [[], []];
+  const [departments, terms, batches] = deps.data || [[], [], []];
   const cols = [
     { key: 'name', header: 'Name', sortKey: 'name', render: (u) => <><strong>{u.name}</strong><div className="muted small">{u.email}</div></> },
     { key: 'role', header: 'Role', sortKey: 'role', render: (u) => <StatusBadge status={u.role} /> },
     { key: 'dept', header: 'Department', render: (u) => u.department?.code || '-' },
+    { key: 'batch', header: 'Batch', render: (u) => u.batch?.name || '-' },
     { key: 'sid', header: 'Student ID', render: (u) => u.studentId || '-' },
     { key: 'active', header: 'Status', render: (u) => (u.deletedAt ? <StatusBadge status="inactive" label="Deleted" /> : u.emailVerified === false ? <div className="stack" style={{ gap: 4 }}>{u.approvalStatus === 'pending' ? <StatusBadge status="pending" label="Pending approval" /> : <StatusBadge status={u.isActive ? 'active' : 'inactive'} label={u.isActive ? 'Active' : 'Inactive'} />}<Badge tone="warning">Email not verified</Badge></div> : u.approvalStatus === 'pending' ? <StatusBadge status="pending" label="Pending approval" /> : u.approvalStatus === 'rejected' ? <StatusBadge status="rejected" /> : <StatusBadge status={u.isActive ? 'active' : 'inactive'} label={u.isActive ? 'Active' : 'Inactive'} />) },
     { key: 'last', header: 'Last login', sortKey: 'lastLoginAt', render: (u) => fmtDate(u.lastLoginAt) },
@@ -140,7 +142,7 @@ export default function UsersPage() {
         <Select aria-label="Filter by status" value={list.filters.active || ''} onChange={(e) => list.setFilter('active', e.target.value)} style={{ width: 150 }}><option value="">Any status</option><option value="true">Active</option><option value="false">Inactive</option></Select>
       </CardBody></Card>
       <DataTable columns={cols} {...list} onPage={list.setPage} onRetry={list.reload} sort={list.sort} onSort={list.setSort} minWidth={760} />
-      {form && <UserForm user={form.user} departments={departments} terms={terms} onClose={() => setForm(null)} onSaved={(t) => { setForm(null); setTemp(t); list.reload(); }} />}
+      {form && <UserForm user={form.user} departments={departments} terms={terms} batches={batches} onClose={() => setForm(null)} onSaved={(t) => { setForm(null); setTemp(t); list.reload(); }} />}
       {confirm && <ConfirmDialog danger={confirm.type === 'reset' || (confirm.type === 'status' && confirm.user.isActive)} loading={busy} title={confirm.type === 'verify' ? 'Mark email as verified?' : confirm.type === 'reset' ? 'Reset password?' : confirm.user.isActive ? 'Deactivate user?' : 'Activate user?'} confirmLabel={confirm.type === 'verify' ? 'Mark as verified' : confirm.type === 'reset' ? 'Reset password' : confirm.user.isActive ? 'Deactivate' : 'Activate'} onClose={() => setConfirm(null)} onConfirm={act}
         message={confirm.type === 'verify' ? `Use this only if you know ${confirm.user.name} owns the address ${confirm.user.email} (for example when verification emails cannot be delivered). They will be able to log in without opening the email link.` : confirm.type === 'reset' ? `A new temporary password will be generated for ${confirm.user.name} and all their sessions will end.` : confirm.user.isActive ? `${confirm.user.name} will be signed out and unable to log in. Their records are kept.` : `${confirm.user.name} will be able to log in again.`} />}
       {temp && <TempPassword value={temp.password} name={temp.name} onClose={() => setTemp(null)} />}

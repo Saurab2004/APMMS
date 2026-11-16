@@ -26,7 +26,7 @@ export const WELCOME = {
     title: 'Welcome, Coordinator',
     purpose: 'You run your institution\'s own workspace. Only people of your institution can see its data. Your dashboard shows your whole programme and what needs action.',
     actions: [
-      'Set up first: add your departments and the current academic term (students cannot create groups before that)',
+      'Set up first: add your departments, your academic terms with deadlines, and a batch for each intake (students pick their batch when they sign up)',
       'Approve supervisor sign-ups and manage users (Users & approvals)',
       'Assign a supervisor to every project and monitor progress',
       'Set up rubrics, collect evaluations and publish results',

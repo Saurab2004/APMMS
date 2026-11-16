@@ -1,9 +1,10 @@
-import { User, Department, AcademicTerm, Project, ProjectGroup, PlatformAdmin } from '../models/index.js';
+import { User, Department, AcademicTerm, Batch, Project, ProjectGroup, PlatformAdmin } from '../models/index.js';
+import { syncStudentTerm } from '../services/batches.js';
 import { ROLES } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, parsePage, pageMeta, parseSort, escapeRegex, isId, generateTempPassword, passwordProblem } from '../utils/helpers.js';
 import { audit } from '../services/audit.js';
-import { sameId } from '../utils/helpers.js';
+import { sameId, idStr } from '../utils/helpers.js';
 
 const CREATABLE_ROLES = ['student', 'supervisor', 'coordinator'];
 
@@ -12,6 +13,7 @@ export const listUsers = asyncHandler(async (req, res) => {
   const filter = {};
   if (ROLES.includes(req.query.role)) filter.role = req.query.role;
   if (isId(req.query.department)) filter.department = req.query.department;
+  if (isId(req.query.batch)) filter.batch = req.query.batch;
   if (req.query.approval === 'pending') filter.approvalStatus = 'pending';
   if (req.query.active === 'true') filter.isActive = true;
   if (req.query.active === 'false') filter.isActive = false;
@@ -22,7 +24,7 @@ export const listUsers = asyncHandler(async (req, res) => {
   const sort = parseSort(req.query, ['name', 'email', 'role', 'createdAt', 'lastLoginAt'], { createdAt: -1 });
 
   const [items, total] = await Promise.all([
-    User.find(filter).populate('department', 'name code').sort(sort).skip(skip).limit(limit),
+    User.find(filter).populate('department', 'name code').populate('batch', 'name').sort(sort).skip(skip).limit(limit),
     User.countDocuments(filter),
   ]);
 
@@ -40,7 +42,7 @@ export const listUsers = asyncHandler(async (req, res) => {
 
 export const getUser = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id).populate('department', 'name code').populate('term', 'name');
+  const user = await User.findById(req.params.id).populate('department', 'name code').populate('term', 'name').populate('batch', 'name');
   if (!user) throw new AppError('User not found', 404);
   const extra = {};
   if (user.role === 'student') {
@@ -54,7 +56,7 @@ export const getUser = asyncHandler(async (req, res) => {
 
 /** Coordinator creates accounts for every role (this is how privileged users are onboarded). */
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, role, departmentId, termId, studentId, phone, designation, maxProjects, password } = req.body;
+  const { name, email, role, departmentId, termId, batchId, studentId, phone, designation, maxProjects, password } = req.body;
   if (!CREATABLE_ROLES.includes(role)) throw new AppError('Choose student, supervisor or coordinator. External evaluators are created from External Evaluators.', 422, { role: 'Invalid role' });
   if ((await User.exists({ email })) || (await PlatformAdmin.exists({ email }))) throw new AppError('A user with this email already exists', 409, { email: 'Already in use' });
   if (role === 'student') {
@@ -65,6 +67,11 @@ export const createUser = asyncHandler(async (req, res) => {
   if (role === 'supervisor' && !departmentId) throw new AppError('Department is required for supervisors', 422, { departmentId: 'Required' });
   if (departmentId && !(await Department.exists({ _id: departmentId }))) throw new AppError('Department not found', 422, { departmentId: 'Not found' });
   if (termId && !(await AcademicTerm.exists({ _id: termId }))) throw new AppError('Academic term not found', 422, { termId: 'Not found' });
+  let batch = null;
+  if (batchId) {
+    batch = await Batch.findOne({ _id: batchId, department: departmentId });
+    if (!batch) throw new AppError('Batch not found in that department', 422, { batchId: 'Not found' });
+  }
 
   const temporaryPassword = password || generateTempPassword();
   const problem = passwordProblem(temporaryPassword);
@@ -75,7 +82,8 @@ export const createUser = asyncHandler(async (req, res) => {
     email,
     role,
     department: departmentId || undefined,
-    term: role === 'student' ? termId || (await AcademicTerm.findOne({ isCurrent: true }))?._id : undefined,
+    batch: role === 'student' ? batch?._id : undefined,
+    term: role === 'student' ? batch?.term || termId || (await AcademicTerm.findOne({ isCurrent: true }))?._id : undefined,
     studentId: role === 'student' ? studentId : undefined,
     phone,
     designation: role === 'supervisor' ? designation : undefined,
@@ -94,7 +102,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) throw new AppError('User not found', 404);
   if (user.deletedAt) throw new AppError('This account was deleted by its owner.', 409);
-  const { name, phone, departmentId, studentId, designation, maxProjects, termId } = req.body;
+  const { name, phone, departmentId, studentId, designation, maxProjects, termId, batchId } = req.body;
   if (name !== undefined) user.name = name;
   if (phone !== undefined) user.phone = phone;
   if (departmentId) {
@@ -102,6 +110,16 @@ export const updateUser = asyncHandler(async (req, res) => {
     user.department = departmentId;
   }
   if (termId) user.term = termId;
+  if (batchId !== undefined && user.role === 'student') {
+    if (batchId) {
+      const batch = await Batch.findOne({ _id: batchId, department: user.department });
+      if (!batch) throw new AppError('Batch not found in this student\'s department', 422, { batchId: 'Not found' });
+      if (idStr(user.batch) !== idStr(batch._id) && (await ProjectGroup.exists({ status: 'active', activeMemberIds: user._id }))) {
+        throw new AppError('This student is in an active group. Remove them from the group first, then change the batch.', 409, { batchId: 'In an active group' });
+      }
+      syncStudentTerm(user, batch);
+    }
+  }
   if (studentId !== undefined && user.role === 'student') {
     if (studentId && (await User.exists({ studentId, _id: { $ne: user._id } }))) throw new AppError('This student ID already exists', 409);
     user.studentId = studentId || undefined;

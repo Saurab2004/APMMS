@@ -19,6 +19,11 @@ Role requirements are defined in `server/routes/index.js` (look at the middlewar
 | `POST` | `/api/academic-terms` |
 | `GET` | `/api/academic-terms` |
 | `PATCH` | `/api/academic-terms/:id` |
+| `GET` | `/api/batches` (any signed-in user; `?department=`, coordinator also `?all=1` for completed batches) |
+| `POST` | `/api/batches` (coordinator: `name`, `departmentId`, `intakeYear`, `termId`, `allowSignup`, `note`) |
+| `PATCH` | `/api/batches/:id` (coordinator: rename, `allowSignup`, `status` active/completed) |
+| `POST` | `/api/batches/:id/move-term` (coordinator: `termId`, `moveGroups`; students and unfinished groups follow) |
+| `GET` | `/api/batches/workload` (coordinator: unfinished projects per supervisor and batch) |
 | `GET` | `/api/analytics` |
 | `GET` | `/api/analytics/export/analytics.pdf` |
 | `GET` | `/api/analytics/export/projects.csv` |

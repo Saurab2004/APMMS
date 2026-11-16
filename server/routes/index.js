@@ -17,6 +17,7 @@ import * as institutions from '../controllers/institutionController.js';
 import * as platform from '../controllers/platformController.js';
 import * as academic from '../controllers/academicController.js';
 import * as groups from '../controllers/groupController.js';
+import * as batches from '../controllers/batchController.js';
 import * as projects from '../controllers/projectController.js';
 import * as proposals from '../controllers/proposalController.js';
 import * as reports from '../controllers/reportController.js';
@@ -59,6 +60,7 @@ r.post(
     role: { type: 'enum', values: ['student', 'supervisor', 'coordinator'] },
     studentId: { max: 40, label: 'Student ID' },
     departmentId: S.id('Department'),
+    batchId: S.id('Batch'),
     institutionId: S.id('Institution'),
     institutionName: { max: 160, label: 'Institution name' },
     institutionType: { type: 'enum', values: ['university', 'college', 'school', 'institute', 'training_center', 'other'] },
@@ -108,6 +110,7 @@ r.post(
     role: { type: 'enum', values: ['student', 'supervisor', 'coordinator'], required: true },
     departmentId: S.id('Department'),
     termId: S.id('Term'),
+    batchId: S.id('Batch'),
     studentId: { max: 40 },
     phone: { max: 30 },
     designation: { max: 100 },
@@ -125,6 +128,7 @@ r.patch(
     phone: { max: 30 },
     departmentId: S.id('Department'),
     termId: S.id('Term'),
+    batchId: S.id('Batch'),
     studentId: { max: 40 },
     designation: { max: 100 },
     maxProjects: { type: 'number', min: 1, max: 50 },
@@ -161,6 +165,19 @@ const termRules = (req) => ({
 r.get('/academic-terms', any, academic.listTerms);
 r.post('/academic-terms', coordinator, validate(termRules(true)), academic.createTerm);
 r.patch('/academic-terms/:id', coordinator, validate(termRules(false)), academic.updateTerm);
+
+// Batches: one intake of one department; each points at the term it works in now.
+r.get('/batches', any, batches.listBatches);
+r.get('/batches/workload', coordinator, batches.workload);
+r.post('/batches', coordinator, validate({
+  name: { required: true, min: 2, max: 80 }, departmentId: S.id('Department', true), intakeYear: { type: 'number', min: 1990, max: 2100 },
+  termId: S.id('Term'), allowSignup: { type: 'boolean' }, note: { max: 300 },
+}), batches.createBatch);
+r.patch('/batches/:id', coordinator, validate({
+  name: { min: 2, max: 80 }, intakeYear: { type: 'number', min: 1990, max: 2100 }, allowSignup: { type: 'boolean' }, note: { max: 300 },
+  status: { type: 'enum', values: ['active', 'completed'] },
+}), batches.updateBatch);
+r.post('/batches/:id/move-term', coordinator, validate({ termId: S.id('Term', true), moveGroups: { type: 'boolean' } }), batches.moveBatchTerm);
 
 r.get('/settings', coordinator, academic.readSettings);
 r.put('/settings', coordinator, academic.saveSettings);

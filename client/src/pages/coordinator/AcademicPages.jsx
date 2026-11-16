@@ -56,7 +56,7 @@ function TermForm({ term, onClose, onSaved }) {
   const f = useForm({
     name: term?.name || '', academicYear: term?.academicYear || '', semester: term?.semester || '',
     startDate: toInputDate(term?.startDate), endDate: toInputDate(term?.endDate),
-    proposalDeadline: toInputDate(term?.deadlines?.proposal), finalReportDeadline: toInputDate(term?.deadlines?.finalReport), isCurrent: !!term?.isCurrent,
+    proposalDeadline: toInputDate(term?.deadlines?.proposal), finalReportDeadline: toInputDate(term?.deadlines?.finalReport), isCurrent: !!term?.isCurrent, isActive: term ? term.isActive !== false : true,
   });
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -79,7 +79,8 @@ function TermForm({ term, onClose, onSaved }) {
         <Field label="End date" required error={f.errors.endDate}><Input type="date" {...f.bind('endDate')} required /></Field>
         <Field label="Proposal deadline" error={f.errors.proposalDeadline}><Input type="date" {...f.bind('proposalDeadline')} /></Field>
         <Field label="Final report deadline" error={f.errors.finalReportDeadline}><Input type="date" {...f.bind('finalReportDeadline')} /></Field>
-        <div style={{ gridColumn: '1 / -1' }}><Check label="This is the current term (new students and groups use it)" checked={!!f.values.isCurrent} onChange={(e) => f.set('isCurrent', e.target.checked)} /></div>
+        <div style={{ gridColumn: '1 / -1' }}><Check label="Default term (only used for students who are not in any batch)" checked={!!f.values.isCurrent} onChange={(e) => f.set('isCurrent', e.target.checked)} /></div>
+        {term && <div style={{ gridColumn: '1 / -1' }}><Check label="Active (untick to archive an old term; its data stays)" checked={!!f.values.isActive} onChange={(e) => f.set('isActive', e.target.checked)} /></div>}
         <button type="submit" hidden />
       </form>
     </Modal>
@@ -90,7 +91,7 @@ export function AcademicStructurePage() {
   const state = useAsync(() => get('/academic-terms'), []);
   const [form, setForm] = useState(null);
   const cols = [
-    { key: 'name', header: 'Term', render: (t) => <><strong>{t.name}</strong>{t.isCurrent && <> <Badge tone="success">Current</Badge></>}<div className="muted small">{t.academicYear} - {t.semester}</div></> },
+    { key: 'name', header: 'Term', render: (t) => <><strong>{t.name}</strong>{t.isCurrent && <> <Badge tone="success">Default</Badge></>}{t.isActive === false && <> <Badge>Archived</Badge></>}<div className="muted small">{t.academicYear} - {t.semester}</div></> },
     { key: 'dates', header: 'Dates', render: (t) => `${fmtDate(t.startDate)} to ${fmtDate(t.endDate)}` },
     { key: 'p', header: 'Proposal deadline', render: (t) => fmtDate(t.deadlines?.proposal) },
     { key: 'f', header: 'Final report deadline', render: (t) => fmtDate(t.deadlines?.finalReport) },
@@ -98,8 +99,8 @@ export function AcademicStructurePage() {
   ];
   return (
     <>
-      <PageHeader title="Academic structure" subtitle="Terms and their deadlines. Only one term is current at a time." actions={<Button icon={Plus} onClick={() => setForm({})}>Add term</Button>} />
-      <Alert className="mb">Deadlines set here are used for late-submission checks and deadline reminders.</Alert>
+      <PageHeader title="Academic structure" subtitle="Terms and their deadlines. Many terms can be active at the same time; each batch works in one of them." actions={<Button icon={Plus} onClick={() => setForm({})}>Add term</Button>} />
+      <Alert className="mb">Deadlines set here are used for late-submission checks and deadline reminders. Link a batch to a term on the <a href="/coordinator/batches">Batches</a> page.</Alert>
       <DataTable columns={cols} rows={state.data} loading={state.loading} error={state.error} onRetry={state.reload} minWidth={640} />
       {form && <TermForm term={form.term} onClose={() => setForm(null)} onSaved={() => { setForm(null); state.reload(); }} />}
     </>

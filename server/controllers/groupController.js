@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
-import { ProjectGroup, GroupInvitation, Project, User, AcademicTerm } from '../models/index.js';
+import { ProjectGroup, GroupInvitation, Project, User } from '../models/index.js';
+import { batchAndTermFor } from '../services/batches.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, parsePage, pageMeta, escapeRegex, isId, generateGroupCode, idStr, sameId, addDays } from '../utils/helpers.js';
 import { audit } from '../services/audit.js';
@@ -51,7 +52,7 @@ async function assertProjectEditable(group) {
 }
 
 const shapeGroup = async (group) => {
-  await group.populate([MEMBER_POPULATE, { path: 'term', select: 'name' }, { path: 'department', select: 'name code' }]);
+  await group.populate([MEMBER_POPULATE, { path: 'term', select: 'name' }, { path: 'batch', select: 'name' }, { path: 'department', select: 'name code' }]);
   const project = await Project.findById(group.project).populate('supervisor', 'name email').lean();
   return { group: group.toJSON(), project };
 };
@@ -96,8 +97,7 @@ export const getMyGroups = asyncHandler(async (req, res) => {
 export const createGroup = asyncHandler(async (req, res) => {
   if (!req.user.department) throw new AppError('Your account has no department. Please contact the coordinator.', 409);
   await assertNotInActiveGroup(req.user._id, 'You are already in an active group. Leave it first to create a new one.');
-  const term = await AcademicTerm.findOne({ isCurrent: true, isActive: true });
-  if (!term) throw new AppError('No current academic term is configured yet. Please contact the coordinator.', 409);
+  const { batch, term } = await batchAndTermFor(req.user);
 
   const name = req.body.name;
   let group = null;
@@ -108,6 +108,7 @@ export const createGroup = asyncHandler(async (req, res) => {
         nameKey: name.toLowerCase(),
         code: generateGroupCode(),
         term: term._id,
+        batch: batch?._id,
         department: req.user.department,
         createdBy: req.user._id,
         members: [{ user: req.user._id, role: 'leader' }],
@@ -121,7 +122,7 @@ export const createGroup = asyncHandler(async (req, res) => {
   if (!group) throw new AppError('Could not generate a unique group code, please try again', 500);
 
   try {
-    const project = await Project.create({ group: group._id, term: term._id, department: req.user.department });
+    const project = await Project.create({ group: group._id, term: term._id, batch: batch?._id, department: req.user.department });
     group.project = project._id;
     await group.save();
   } catch (err) {
@@ -137,6 +138,7 @@ export const joinByCode = asyncHandler(async (req, res) => {
   const group = await ProjectGroup.findOne({ code, status: 'active' });
   if (!group) throw new AppError('No active group matches that code', 404, { code: 'Invalid code' });
   if (idStr(group.department) !== idStr(req.user.department)) throw new AppError('This group belongs to a different department', 403);
+  if (group.batch && idStr(group.batch) !== idStr(req.user.batch)) throw new AppError('This group belongs to a different batch', 403);
   if (group.activeMember(req.user._id)) throw new AppError('You are already a member of this group', 409);
   await assertNotInActiveGroup(req.user._id, 'You are already in an active group. Leave it before joining another.');
   await assertProjectEditable(group);
@@ -165,6 +167,7 @@ export const inviteMember = asyncHandler(async (req, res) => {
   const invitee = await User.findOne({ email: req.body.email, role: 'student', isActive: true });
   if (!invitee) throw new AppError('No active student with this email was found', 404, { email: 'Student not found' });
   if (idStr(invitee.department) !== idStr(group.department)) throw new AppError('This student belongs to a different department', 409, { email: 'Different department' });
+  if (group.batch && idStr(invitee.batch) !== idStr(group.batch)) throw new AppError('This student belongs to a different batch', 409, { email: 'Different batch' });
   if (group.activeMember(invitee._id)) throw new AppError('This student is already in your group', 409);
   if (settings.singleActiveGroup && (await findActiveGroupOf(invitee._id))) throw new AppError('This student is already in another active group', 409, { email: 'Already in a group' });
 
@@ -315,6 +318,7 @@ export const listGroups = asyncHandler(async (req, res) => {
   if (['active', 'archived', 'dissolved'].includes(req.query.status)) filter.status = req.query.status;
   if (isId(req.query.department)) filter.department = req.query.department;
   if (isId(req.query.term)) filter.term = req.query.term;
+  if (isId(req.query.batch)) filter.batch = req.query.batch;
   if (req.query.q) filter.name = new RegExp(escapeRegex(String(req.query.q).slice(0, 80)), 'i');
   if (req.query.noSupervisor === '1') {
     filter._id = { $in: await Project.find({ supervisor: { $exists: false } }).distinct('group') };
@@ -323,6 +327,7 @@ export const listGroups = asyncHandler(async (req, res) => {
     ProjectGroup.find(filter)
       .populate('department', 'name code')
       .populate('term', 'name')
+      .populate('batch', 'name')
       .populate({ path: 'project', select: 'title status supervisor', populate: { path: 'supervisor', select: 'name' } })
       .populate(MEMBER_POPULATE)
       .sort({ createdAt: -1 })

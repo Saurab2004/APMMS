@@ -38,7 +38,7 @@ const GUIDE = {
   coordinator: {
     intro: 'You run your institution\'s own workspace. Nobody outside your institution can see your data.',
     steps: [
-      ['First-time setup', 'Your institution is active. Add your departments and the current academic term with its deadlines - students cannot create groups before a current term exists.'],
+      ['First-time setup', 'Your institution is active. Add your departments, your academic terms with their deadlines, and one batch per intake (for example 2023 Batch) linked to its term. Students pick their batch when they sign up, and their groups follow the term of that batch.'],
       ['Approve people', 'Supervisors who sign up wait on the Users page until you approve them. You can also create any account yourself.'],
       ['Assign supervisors', 'Use Supervisor assignment. Capacity warnings stop overloading a supervisor.'],
       ['Monitor', 'Dashboard, Project monitoring, Report monitoring and Analytics show where help is needed.'],

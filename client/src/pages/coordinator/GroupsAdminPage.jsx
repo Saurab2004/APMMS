@@ -66,12 +66,13 @@ function AddMember({ groupId, onDone, move, setMove }) {
 export default function GroupsAdminPage() {
   const list = usePaged('/groups', { initialFilters: { status: 'active' } });
   const deps = useAsync(() => get('/departments'), []);
+  const batches = useAsync(() => get('/batches'), []);
   const [managing, setManaging] = useState(null);
   const cols = [
     { key: 'name', header: 'Group', render: (g) => <><strong>{g.name}</strong><div className="muted small">Code {g.code}</div></> },
     { key: 'members', header: 'Members', render: (g) => (g.members || []).filter((m) => m.status === 'active').map((m) => m.user?.name).join(', ') || '-' },
     { key: 'dept', header: 'Dept', render: (g) => g.department?.code || '-' },
-    { key: 'term', header: 'Term', render: (g) => g.term?.name || '-' },
+    { key: 'term', header: 'Batch / term', render: (g) => <>{g.batch?.name || '-'}<div className="muted small">{g.term?.name || '-'}</div></> },
     { key: 'sup', header: 'Supervisor', render: (g) => g.project?.supervisor?.name || <Badge tone="warning">Not assigned</Badge> },
     { key: 'status', header: 'Status', render: (g) => <StatusBadge status={g.status} /> },
     { key: 'a', header: '', render: (g) => <Button size="sm" variant="secondary" onClick={() => setManaging(g._id)}>Manage</Button> },
@@ -84,6 +85,7 @@ export default function GroupsAdminPage() {
         <SearchInput value={list.q} onChange={list.setQ} placeholder="Search group name" />
         <Select aria-label="Status" value={list.filters.status || ''} onChange={(e) => list.setFilter('status', e.target.value)} style={{ width: 150 }}><option value="">Any status</option><option value="active">Active</option><option value="archived">Archived</option><option value="dissolved">Dissolved</option></Select>
         <Select aria-label="Department" value={list.filters.department || ''} onChange={(e) => list.setFilter('department', e.target.value)} style={{ width: 180 }}><option value="">All departments</option>{(deps.data || []).map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}</Select>
+        <Select aria-label="Batch" value={list.filters.batch || ''} onChange={(e) => list.setFilter('batch', e.target.value)} style={{ width: 190 }}><option value="">All batches</option>{(batches.data || []).map((b) => <option key={b._id} value={b._id}>{b.name} ({b.department?.code})</option>)}</Select>
         <Check label="Without supervisor" checked={list.filters.noSupervisor === '1'} onChange={(e) => list.setFilter('noSupervisor', e.target.checked ? '1' : '')} />
       </CardBody></Card>
       <DataTable columns={cols} {...list} onPage={list.setPage} onRetry={list.reload} minWidth={760} />

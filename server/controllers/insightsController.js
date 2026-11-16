@@ -27,12 +27,14 @@ export const calendar = asyncHandler(async (req, res) => {
   const ids = await scopedProjectIds(req.user);
   const scope = ids ? { project: { $in: ids } } : {};
 
-  const [milestones, meetings, reports, term] = await Promise.all([
+  const [milestones, meetings, reports] = await Promise.all([
     Milestone.find({ ...scope, plannedDate: { $gte: from, $lt: to } }).select('title plannedDate status project').lean(),
     Meeting.find({ ...scope, scheduledAt: { $gte: from, $lt: to }, status: { $ne: 'cancelled' } }).select('title scheduledAt status location project').lean(),
     ProgressReport.find({ ...scope, deadline: { $gte: from, $lt: to }, status: { $in: ['draft', 'revision_required'] } }).select('title deadline status project').lean(),
-    AcademicTerm.findOne({ isCurrent: true }).lean(),
   ]);
+  // Deadlines come from each project's own term (batches can be in different terms at the same time).
+  const termIds = ids ? await Project.find({ _id: { $in: ids } }).distinct('term') : await AcademicTerm.find({ isActive: true }).distinct('_id');
+  const terms = await AcademicTerm.find({ _id: { $in: [...termIds, ...(req.user.term ? [req.user.term] : [])] } }).lean();
   const projects = await Project.find({ _id: { $in: [...new Set([...milestones, ...meetings, ...reports].map((e) => idStr(e.project)))] } }).populate('group', 'name').select('title group').lean();
   const group = new Map(projects.map((p) => [idStr(p._id), { id: p._id, group: p.group?.name }]));
   const ref = (e) => group.get(idStr(e.project)) || {};
@@ -42,9 +44,11 @@ export const calendar = asyncHandler(async (req, res) => {
     ...meetings.map((e) => ({ id: `t${e._id}`, type: 'meeting', title: e.title, date: e.scheduledAt, status: e.status, place: e.location, projectId: ref(e).id, group: ref(e).group })),
     ...reports.map((e) => ({ id: `r${e._id}`, type: 'report', title: `Report due: ${e.title}`, date: e.deadline, status: e.status, projectId: ref(e).id, group: ref(e).group })),
   ];
-  for (const [key, label] of [['proposal', 'Proposal deadline'], ['finalReport', 'Final report deadline']]) {
-    const d = term?.deadlines?.[key];
-    if (d && d >= from && d < to) events.push({ id: `d${key}`, type: 'deadline', title: label, date: d, status: 'pending' });
+  for (const term of terms) {
+    for (const [key, label] of [['proposal', 'Proposal deadline'], ['finalReport', 'Final report deadline']]) {
+      const d = term.deadlines?.[key];
+      if (d && d >= from && d < to) events.push({ id: `d${key}${term._id}`, type: 'deadline', title: terms.length > 1 ? `${label} (${term.name})` : label, date: d, status: 'pending' });
+    }
   }
   events.sort((a, b) => new Date(a.date) - new Date(b.date));
   ok(res, events);

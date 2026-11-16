@@ -135,6 +135,7 @@ async function matchingProjectIds(q) {
   const f = {};
   if (isId(q.department)) f.department = q.department;
   if (isId(q.term)) f.term = q.term;
+  if (isId(q.batch)) f.batch = q.batch;
   if (isId(q.supervisor)) f.supervisor = q.supervisor;
   if (q.status) f.status = q.status;
   if (!Object.keys(f).length) return null;

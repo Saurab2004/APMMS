@@ -283,6 +283,7 @@ export const listReports = asyncHandler(async (req, res) => {
   const projFilter = {};
   if (isId(req.query.department)) projFilter.department = req.query.department;
   if (isId(req.query.term)) projFilter.term = req.query.term;
+  if (isId(req.query.batch)) projFilter.batch = req.query.batch;
   if (isId(req.query.supervisor)) projFilter.supervisor = req.query.supervisor;
   if (isId(req.query.group)) projFilter.group = req.query.group;
   if (Object.keys(projFilter).length) {
@@ -340,6 +341,7 @@ export const exportReportsCsv = asyncHandler(async (req, res) => {
   const projFilter = {};
   if (isId(req.query.department)) projFilter.department = req.query.department;
   if (isId(req.query.term)) projFilter.term = req.query.term;
+  if (isId(req.query.batch)) projFilter.batch = req.query.batch;
   if (isId(req.query.supervisor)) projFilter.supervisor = req.query.supervisor;
   if (Object.keys(projFilter).length) filter.project = { $in: await Project.find(projFilter).distinct('_id') };
   const rows = await ProgressReport.find(filter)
