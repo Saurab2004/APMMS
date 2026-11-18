@@ -60,13 +60,23 @@ export async function assertInstitutionUsable(user) {
 
 const PASSWORD_CHANGE_ALLOWED = ['/api/auth/me', '/api/auth/change-password', '/api/auth/logout'];
 
+/** The department a department-level coordinator is limited to; null for everyone else (institution coordinators see all departments). */
+export const deptScopeOf = (user) => (user?.role === 'coordinator' && user.coordinatorLevel === 'department' ? user.department : null);
+
 export const authenticate = asyncHandler(async (req, _res, next) => {
   req.user = await userFromToken(req.cookies?.[env.cookieName]);
+  req.deptScope = deptScopeOf(req.user);
   if (req.user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.includes(req.originalUrl.split('?')[0])) {
     throw new AppError('You must change your temporary password first', 403, undefined, 'PASSWORD_CHANGE_REQUIRED');
   }
   next();
 });
+
+/** For things that affect the whole institution (terms, faculties, departments, settings): department coordinators may not. */
+export const institutionLevelOnly = (req, _res, next) => {
+  if (req.deptScope) return next(new AppError('Only the institution coordinator can do this. Ask them, or the platform admin.', 403));
+  next();
+};
 
 /** Role-based access control. Use after `authenticate`. */
 export const authorize = (...roles) => (req, _res, next) => {

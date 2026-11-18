@@ -7,6 +7,7 @@ export const SETTING_RULES = {
   minGroupSize: { type: 'int', min: 1, max: 12, default: 1, label: 'Minimum group size to submit a proposal' },
   singleActiveGroup: { type: 'bool', default: true, label: 'A student may belong to only one active group' },
   allowSelfRegistration: { type: 'bool', default: true, label: 'Allow students to self-register' },
+  requireStudentApproval: { type: 'bool', default: false, label: 'New students must be approved by their department coordinator' },
   invitationExpiryDays: { type: 'int', min: 1, max: 60, default: 7, label: 'Group invitation validity (days)' },
   minApprovedProgressReportsForFinal: { type: 'int', min: 0, max: 50, default: 1, label: 'Approved progress reports required before the final report' },
   reminderLeadDays: { type: 'int', min: 1, max: 30, default: 3, label: 'Send deadline reminders this many days ahead' },

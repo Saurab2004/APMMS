@@ -46,7 +46,7 @@ APMMS serves **many institutions** (universities, colleges, schools) from one in
 
 After logging in as admin you can: see all institutions with their counts, add an institution with its first coordinator, rename / suspend / reactivate / restore / erase an institution, help coordinators (reset password, deactivate, resend or confirm the verification email), add more admins, read the platform audit log, check system health and switch new-institution sign-up on or off. You never see students' projects or reports. Admin emails cannot be used for institution accounts and vice versa.
 
-**Another institution joins.** Its head registers as **Coordinator** with the institution name and verifies the email. The institution is **activated automatically** right after that; nobody has to approve it. They log in, add departments, academic terms and a batch for each intake, and invite their people. If someone misuses the platform, a platform admin can suspend that institution.
+**Another institution joins.** Only the platform admin can add it: *Platform console > Institutions > Add institution*, then on its page add **faculties**, add **departments** under each faculty and **invite a coordinator** for each department (needs email set up, e.g. Brevo; otherwise the page shows the link to send by hand). The coordinator opens the link, chooses a password and logs in to add batches and academic terms (choose existing batches while adding a term) and approve their people. If someone misuses the platform, a platform admin can suspend that institution.
 
 **Students and supervisors** sign up on the Register page: choose **institution** first, then **department**.
 - **Student** - verifies the email, then logs in.

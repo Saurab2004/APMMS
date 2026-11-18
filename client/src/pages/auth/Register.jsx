@@ -16,8 +16,7 @@ const INTRO = {
   student: 'Choose your institution. We will email you a link to verify your address, then you can log in.',
   supervisor: 'Choose your institution. Verify your email first, then your institution\'s coordinator approves your account.',
 };
-const TYPES = [['university', 'University'], ['college', 'College'], ['school', 'School'], ['institute', 'Institute'], ['training_center', 'Training centre'], ['other', 'Other']];
-const OPTIONS = ROLE_OPTIONS.map((o) => (o.key === 'coordinator' ? { ...o, hint: 'Register your institution' } : o));
+const OPTIONS = ROLE_OPTIONS.filter((o) => o.key !== 'coordinator');
 
 export default function Register() {
   const { user, register } = useAuth();
@@ -27,18 +26,17 @@ export default function Register() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(null);
-  const f = useForm({ name: '', email: '', studentId: '', departmentId: '', batchId: '', designation: '', institutionId: '', institutionName: '', institutionType: 'university', departmentName: '', password: '', confirm: '' });
+  const f = useForm({ name: '', email: '', studentId: '', facultyId: '', departmentId: '', batchId: '', designation: '', institutionId: '', password: '', confirm: '' });
 
   useEffect(() => { get('/auth/registration-options').then(setOpts).catch((e) => setError(errMsg(e))); }, []);
   if (user && !done) return <Navigate to={homeFor(user.role)} replace />;
 
   const v = f.values;
-  const platform = opts?.platform;
   const institution = opts?.institutions.find((i) => i._id === v.institutionId);
+  const faculty = institution?.faculties?.find((x) => x._id === v.facultyId);
+  const deptsOfFaculty = (institution?.departments || []).filter((d) => String(d.faculty) === String(v.facultyId));
   const department = institution?.departments.find((d) => d._id === v.departmentId);
-  const selfOff = role !== 'coordinator' && institution && !institution.allowSelfRegistration;
-  const coordOff = role === 'coordinator' && platform && !platform.allowInstitutionRegistration;
-  const coordIntro = 'Register your institution as its coordinator. After you verify your email your institution is activated automatically (no other institution is involved). Then you can log in and set up departments, terms and users.';
+  const selfOff = institution && !institution.allowSelfRegistration;
 
   const submit = async (e) => {
     e.preventDefault();
@@ -47,8 +45,7 @@ export default function Register() {
     setBusy(true);
     try {
       const r = await register({ role, name: v.name, email: v.email, password: v.password, studentId: role === 'student' ? v.studentId : undefined,
-        institutionId: role === 'coordinator' ? undefined : v.institutionId, departmentId: role === 'coordinator' ? undefined : v.departmentId, batchId: role === 'student' ? v.batchId || undefined : undefined,
-        institutionName: role === 'coordinator' ? v.institutionName : undefined, institutionType: role === 'coordinator' ? v.institutionType : undefined, departmentName: role === 'coordinator' ? v.departmentName || undefined : undefined,
+        institutionId: v.institutionId, facultyId: v.facultyId, departmentId: v.departmentId, batchId: role === 'student' ? v.batchId || undefined : undefined,
         designation: role === 'supervisor' ? v.designation : undefined });
       if (r.verificationRequired || r.pending) setDone({ message: r.message, email: r.email || v.email, emailSent: r.emailSent });
       else navigate(homeFor(r.user.role), { replace: true });
@@ -83,52 +80,49 @@ export default function Register() {
       <h1>Create your account</h1>
       <p className="muted mb">Choose your role first.</p>
       <RolePicker value={role} options={OPTIONS} onChange={(r) => { setRole(r); setError(''); }} />
-      <p className="muted small mb">{role === 'coordinator' ? coordIntro : INTRO[role]}</p>
+      <p className="muted small mb">{INTRO[role]}</p>
+      <p className="muted small mb">Coordinators do not sign up here: the APMMS administrator invites them by email.</p>
       {!opts && !error ? <Loading /> : null}
-      {role !== 'coordinator' && opts && opts.institutions.length === 0 && <Alert tone="warning" className="mb">No institution has joined yet. A coordinator must register the institution first - choose <strong>Coordinator</strong> above.</Alert>}
-      {coordOff && <Alert tone="warning" className="mb">New institutions cannot sign up right now. Please contact the APMMS administrator.</Alert>}
+      {opts && opts.institutions.length === 0 && <Alert tone="warning" className="mb">No institution has been added yet. The APMMS administrator adds institutions - please check back later.</Alert>}
       {selfOff && <Alert tone="warning" className="mb">Self-registration is turned off at {institution.name}. Please ask its coordinator to create your account.</Alert>}
       {error && <Alert tone="danger" className="mb">{error}</Alert>}
-      {opts && !selfOff && !coordOff && !(role !== 'coordinator' && opts.institutions.length === 0) && (
+      {opts && !selfOff && opts.institutions.length > 0 && (
         <form className="stack" onSubmit={submit} noValidate>
           <Field label="Full name" required error={f.errors.name}><Input {...f.bind('name')} autoComplete="name" required /></Field>
           <Field label="Email" required error={f.errors.email}><Input type="email" {...f.bind('email')} autoComplete="email" required /></Field>
           {role === 'student' && <Field label="Student ID" required error={f.errors.studentId}><Input {...f.bind('studentId')} required /></Field>}
-          {role !== 'coordinator' && (<>
-            <Field label="Institution" required error={f.errors.institutionId} help="Your university, college or school. Not listed? Ask your coordinator to register it first.">
-              <Select value={v.institutionId} onChange={(e) => { f.set('institutionId', e.target.value); f.set('departmentId', ''); }} required>
-                <option value="">Select institution</option>
-                {opts.institutions.map((i) => <option key={i._id} value={i._id}>{i.name}</option>)}
+          <Field label="Institution" required error={f.errors.institutionId} help="Only institutions added by the APMMS administrator are listed.">
+            <Select value={v.institutionId} onChange={(e) => { f.set('institutionId', e.target.value); f.set('facultyId', ''); f.set('departmentId', ''); f.set('batchId', ''); }} required>
+              <option value="">Select institution</option>
+              {opts.institutions.map((i) => <option key={i._id} value={i._id}>{i.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Faculty" required error={f.errors.facultyId}>
+            <Select value={v.facultyId} onChange={(e) => { f.set('facultyId', e.target.value); f.set('departmentId', ''); f.set('batchId', ''); }} required disabled={!institution}>
+              <option value="">{institution ? 'Select faculty' : 'Choose an institution first'}</option>
+              {(institution?.faculties || []).map((x) => <option key={x._id} value={x._id}>{x.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Department" required error={f.errors.departmentId}>
+            <Select value={v.departmentId} onChange={(e) => { f.set('departmentId', e.target.value); f.set('batchId', ''); }} required disabled={!faculty}>
+              <option value="">{faculty ? 'Select department' : 'Choose a faculty first'}</option>
+              {deptsOfFaculty.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
+            </Select>
+          </Field>
+          {role === 'student' && department && department.batches?.length > 0 && (
+            <Field label="Batch" required error={f.errors.batchId} help="Your intake, for example the year you joined. Your groups and deadlines follow your batch.">
+              <Select {...f.bind('batchId')} required>
+                <option value="">Select your batch</option>
+                {department.batches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
               </Select>
             </Field>
-            <Field label="Department" required error={f.errors.departmentId}>
-              <Select value={v.departmentId} onChange={(e) => { f.set('departmentId', e.target.value); f.set('batchId', ''); }} required disabled={!institution}>
-                <option value="">{institution ? 'Select department' : 'Choose an institution first'}</option>
-                {(institution?.departments || []).map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
-              </Select>
-            </Field>
-            {role === 'student' && department && department.batches?.length > 0 && (
-              <Field label="Batch" required error={f.errors.batchId} help="Your intake, for example the year you joined. Your groups and deadlines follow your batch.">
-                <Select {...f.bind('batchId')} required>
-                  <option value="">Select your batch</option>
-                  {department.batches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
-                </Select>
-              </Field>
-            )}
-            {role === 'student' && department && !department.batches?.length && <Alert tone="info">This department has not opened a batch yet. You can still sign up; the coordinator will place you in your batch later.</Alert>}
-            {institution && institution.departments.length === 0 && <Alert tone="warning">{institution.name} has not added any department yet. Please ask its coordinator.</Alert>}
-          </>)}
-          {role === 'coordinator' && (<>
-            <Field label="Institution name" required error={f.errors.institutionName} help="For example: Himalaya Engineering College"><Input {...f.bind('institutionName')} maxLength={160} required /></Field>
-            <Field label="Type of institution" error={f.errors.institutionType}>
-              <Select {...f.bind('institutionType')}>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
-            </Field>
-            <Field label="Your department (optional)" error={f.errors.departmentName} help="Students pick a department when they sign up. You can add more departments later."><Input {...f.bind('departmentName')} maxLength={120} /></Field>
-          </>)}
+          )}
+          {role === 'student' && department && !department.batches?.length && <Alert tone="info">This department has not opened a batch yet. You can still sign up; the coordinator will place you in your batch later.</Alert>}
+          {faculty && deptsOfFaculty.length === 0 && <Alert tone="warning">This faculty has no department yet. Please contact your institution.</Alert>}
           {role === 'supervisor' && <Field label="Designation" help="For example Lecturer or Associate Professor" error={f.errors.designation}><Input {...f.bind('designation')} maxLength={100} /></Field>}
           <Field label="Password" required error={f.errors.password} help="At least 8 characters with a letter and a number."><PasswordInput showStrength {...f.bind('password')} autoComplete="new-password" required /></Field>
           <Field label="Confirm password" required error={f.errors.confirm}><PasswordInput {...f.bind('confirm')} autoComplete="new-password" required /></Field>
-          <Button type="submit" icon={UserPlus} loading={busy} block>{role === 'supervisor' ? 'Send request for approval' : role === 'coordinator' ? 'Register my institution' : 'Create account'}</Button>
+          <Button type="submit" icon={UserPlus} loading={busy} block>{role === 'supervisor' ? 'Send request for approval' : 'Create account'}</Button>
         </form>
       )}
       <p className="muted small mt center">Already have an account? <Link to="/login">Log in</Link></p>

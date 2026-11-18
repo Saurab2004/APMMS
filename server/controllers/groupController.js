@@ -308,6 +308,7 @@ export const getGroup = asyncHandler(async (req, res) => {
   const project = await Project.findById(group.project).lean();
   const isSupervisor = req.user.role === 'supervisor' && project && sameId(project.supervisor, req.user._id);
   if (req.user.role !== 'coordinator' && !isMember && !isSupervisor) throw new AppError('Group not found', 404);
+  if (req.deptScope && idStr(group.department) !== idStr(req.deptScope)) throw new AppError('Group not found', 404);
   ok(res, await shapeGroup(group));
 });
 
@@ -317,6 +318,7 @@ export const listGroups = asyncHandler(async (req, res) => {
   const filter = {};
   if (['active', 'archived', 'dissolved'].includes(req.query.status)) filter.status = req.query.status;
   if (isId(req.query.department)) filter.department = req.query.department;
+  if (req.deptScope) filter.department = req.deptScope;
   if (isId(req.query.term)) filter.term = req.query.term;
   if (isId(req.query.batch)) filter.batch = req.query.batch;
   if (req.query.q) filter.name = new RegExp(escapeRegex(String(req.query.q).slice(0, 80)), 'i');
@@ -340,6 +342,7 @@ export const listGroups = asyncHandler(async (req, res) => {
 
 export const adminUpdateGroup = asyncHandler(async (req, res) => {
   const group = await loadGroup(req.params.id);
+  if (req.deptScope && idStr(group.department) !== idStr(req.deptScope)) throw new AppError('Group not found', 404);
   const { action, userId, moveFromOtherGroup } = req.body;
 
   if (action === 'archive') {

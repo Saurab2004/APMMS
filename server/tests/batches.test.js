@@ -45,12 +45,12 @@ test('registration shows the batches of the chosen department and requires one',
   const inst = (await anon().get('/api/auth/registration-options')).body.data.institutions[0];
   const dep = inst.departments[0];
   assert.equal(dep.batches.length, 2);
-  const base = { name: 'New Kid', email: 'kid@apmms.test', password: PW, role: 'student', studentId: 'CSE-500', institutionId: inst._id, departmentId: dep._id };
+  const base = { name: 'New Kid', email: 'kid@apmms.test', password: PW, role: 'student', studentId: 'CSE-500', institutionId: inst._id, facultyId: dep.faculty, departmentId: dep._id };
   assert.equal((await anon().post('/api/auth/register', base)).status, 422, 'batch is required when the department has open batches');
   assert.equal((await anon().post('/api/auth/register', { ...base, batchId: '64b000000000000000000000' })).status, 422, 'unknown batch');
 
   // a batch of another department is refused
-  const civil = (await S.coord.post('/api/departments', { name: 'Civil Engineering', code: 'CIV' })).body.data;
+  const civil = (await S.coord.post('/api/departments', { name: 'Civil Engineering', code: 'CIV', facultyId: dep.faculty })).body.data;
   const other = (await S.coord.post('/api/batches', { name: '2024 Batch', departmentId: civil._id, intakeYear: 2024, termId: S.term1._id })).body.data;
   assert.equal((await anon().post('/api/auth/register', { ...base, batchId: other._id })).status, 422, 'batch must belong to the chosen department');
 

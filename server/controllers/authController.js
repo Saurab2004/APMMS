@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import env from '../config/env.js';
-import { User, Department, AcademicTerm, Batch, Institution } from '../models/index.js';
+import { User, Department, AcademicTerm, Batch, Faculty, Institution } from '../models/index.js';
 import { syncStudentTerm } from '../services/batches.js';
 import { notify } from '../services/notifications.js';
 import { AppError } from '../utils/AppError.js';
@@ -16,15 +16,16 @@ import { activateNewInstitution } from '../services/institutionActivation.js';
 import { PlatformAdmin } from '../models/index.js';
 import { getPlatformSettings } from '../services/platformSettings.js';
 
+/** Who approves a new account of a department: its coordinator, plus the institution coordinators. */
+export const approversFor = (institutionId, departmentId) => User.find({
+  role: 'coordinator', isActive: true, institution: institutionId,
+  $or: [{ coordinatorLevel: { $ne: 'department' } }, { department: departmentId }],
+}).select('_id').lean();
+
 const populatedUser = (id) => User.findById(id).populate('department', 'name code').populate('term', 'name academicYear semester').populate('batch', 'name').populate('institution', 'name type status');
 
 const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
-const nameKeyOf = (name) => String(name).trim().toLowerCase().replace(/\s+/g, ' ');
-const deptCode = (name) => {
-  const words = String(name).toUpperCase().replace(/[^A-Z0-9 ]/g, '').split(' ').filter(Boolean);
-  return (words.length > 1 ? words.map((w) => w[0]).join('') : words[0] || 'DEPT').slice(0, 12);
-};
 
 export const login = asyncHandler(async (req, res) => {
   const { email, password, role } = req.body;
@@ -67,7 +68,8 @@ export const me = asyncHandler(async (req, res) => {
 export const registrationOptions = asyncHandler(async (_req, res) => {
   const platform = await getPlatformSettings();
   const institutions = await Institution.find({ status: 'approved' }).select('name type').sort('name').lean();
-  const departments = await Department.find({ isActive: true, institution: { $in: institutions.map((i) => i._id) } }).select('name code institution').sort('name').lean();
+  const departments = await Department.find({ isActive: true, institution: { $in: institutions.map((i) => i._id) } }).select('name code institution faculty').sort('name').lean();
+  const faculties = await Faculty.find({ isActive: true, institution: { $in: institutions.map((i) => i._id) } }).select('name institution').sort('name').lean();
   const batches = await Batch.find({ status: 'active', allowSignup: true, institution: { $in: institutions.map((i) => i._id) } }).select('name department intakeYear').sort({ intakeYear: -1, name: 1 }).lean();
   const out = [];
   for (const inst of institutions) {
@@ -75,15 +77,16 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
     out.push({
       _id: inst._id, name: inst.name, type: inst.type,
       allowSelfRegistration: settings.allowSelfRegistration,
+      faculties: faculties.filter((f) => String(f.institution) === String(inst._id)).map((f) => ({ _id: f._id, name: f.name })),
       departments: departments.filter((d) => String(d.institution) === String(inst._id)).map((d) => ({
-        _id: d._id, name: d.name, code: d.code,
+        _id: d._id, name: d.name, code: d.code, faculty: d.faculty,
         batches: batches.filter((b) => String(b.department) === String(d._id)).map((b) => ({ _id: b._id, name: b.name })),
       })),
     });
   }
   ok(res, {
     institutions: out,
-    platform: { allowInstitutionRegistration: platform.allowInstitutionRegistration, notice: platform.loginNotice },
+    platform: { notice: platform.loginNotice },
   });
 });
 
@@ -94,13 +97,12 @@ export const registrationOptions = asyncHandler(async (_req, res) => {
  *  - coordinator: registers a NEW institution (see registerCoordinator)
  */
 export const register = asyncHandler(async (req, res) => {
-  const { name, email, password, studentId, departmentId, batchId, institutionId, institutionName, institutionType, departmentName, role = 'student', designation } = req.body;
-  if (!['student', 'supervisor', 'coordinator'].includes(role)) throw new AppError('Choose Student, Supervisor or Coordinator', 422, { role: 'Invalid role' });
+  const { name, email, password, studentId, facultyId, departmentId, batchId, institutionId, role = 'student', designation } = req.body;
+  // Coordinators cannot sign up: the platform admin (or the institution coordinator) invites them by email.
+  if (!['student', 'supervisor'].includes(role)) throw new AppError('Choose Student or Supervisor. Coordinators are added by invitation.', 422, { role: 'Invalid role' });
   const problem = passwordProblem(password);
   if (problem) throw new AppError(problem, 422, { password: problem });
   if ((await User.exists({ email })) || (await PlatformAdmin.exists({ email }))) throw new AppError('An account with this email already exists', 409, { email: 'Already registered' });
-
-  if (role === 'coordinator') return registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName });
 
   // Students and supervisors join ONE existing, approved institution.
   if (!institutionId) throw new AppError('Please choose your institution', 422, { institutionId: 'Required' });
@@ -110,12 +112,16 @@ export const register = asyncHandler(async (req, res) => {
   if (!settings.allowSelfRegistration) throw new AppError('Self-registration is disabled at this institution. Please contact its coordinator.', 403);
   const department = await Department.findOne({ _id: departmentId, institution: institution._id, isActive: true });
   if (!department) throw new AppError('Please choose a valid department', 422, { departmentId: 'Invalid department' });
+  if (department.faculty) {
+    if (!facultyId) throw new AppError('Please choose your faculty', 422, { facultyId: 'Required' });
+    if (String(department.faculty) !== String(facultyId)) throw new AppError('This department does not belong to the chosen faculty', 422, { departmentId: 'Not in this faculty' });
+  }
 
   if (role === 'supervisor') {
     const user = new User({ name, email, role: 'supervisor', institution: institution._id, department: department._id, designation, isActive: false, approvalStatus: 'pending', emailVerified: false });
     await user.setPassword(password);
     await user.save();
-    const coordinators = await User.find({ role: 'coordinator', isActive: true, institution: institution._id }).select('_id').lean();
+    const coordinators = await approversFor(institution._id, department._id);
     await notify(coordinators.map((c) => c._id), { type: 'approval_request', title: 'Supervisor account waiting for approval', body: `${name} (${email}) asked to join as a supervisor.`, link: '/coordinator/users?tab=pending', dedupeKey: `approval:${user._id}` });
     await audit({ user, ip: req.ip }, { action: 'auth.register_pending', entityType: 'User', entityId: user._id, summary: `${name} requested a supervisor account` });
     const mail = await sendVerification(user._id);
@@ -133,14 +139,19 @@ export const register = asyncHandler(async (req, res) => {
     if (!batch) throw new AppError('Please choose a valid batch of your department', 422, { batchId: 'Invalid batch' });
   }
   const term = batch?.term ? null : await AcademicTerm.findOne({ isCurrent: true, institution: institution._id });
-  const user = new User({ name, email, role: 'student', institution: institution._id, studentId, department: department._id, term: term?._id, emailVerified: false });
+  const needsApproval = Boolean(settings.requireStudentApproval);
+  const user = new User({ name, email, role: 'student', institution: institution._id, studentId, department: department._id, term: term?._id, emailVerified: false, ...(needsApproval ? { isActive: false, approvalStatus: 'pending' } : {}) });
   if (batch) syncStudentTerm(user, batch);
   await user.setPassword(password);
   await user.save();
   // No login cookie yet: the student must open the emailed link first.
   await audit({ user, ip: req.ip }, { action: 'auth.register', entityType: 'User', entityId: user._id, summary: `${name} registered (email not verified yet)` });
   const mail = await sendVerification(user._id);
-  ok(res, { verificationRequired: true, email, emailSent: mail.sent, message: 'Account created. Please check your email and open the verification link before logging in.' }, 201);
+  if (needsApproval) {
+    const approvers = await approversFor(institution._id, department._id);
+    await notify(approvers.map((c) => c._id), { type: 'approval_request', title: 'Student account waiting for approval', body: `${name} (${email}) asked to join ${department.name}.`, link: '/coordinator/users?tab=pending', dedupeKey: `approval:${user._id}` });
+  }
+  ok(res, { pending: needsApproval, verificationRequired: true, email, emailSent: mail.sent, message: needsApproval ? 'Account created. Please verify your email, then wait for your department coordinator to approve your account before you can log in.' : 'Account created. Please check your email and open the verification link before logging in.' }, 201);
 });
 
 /**
@@ -149,24 +160,6 @@ export const register = asyncHandler(async (req, res) => {
  * Nobody from another institution is involved. The website owner (platform admin, see /platform) can suspend
  * or reject it later, and can switch new sign-ups off completely (platform setting).
  */
-async function registerCoordinator(req, res, { name, email, password, institutionName, institutionType, departmentName }) {
-  if (!(await getPlatformSettings()).allowInstitutionRegistration) throw new AppError('New institutions cannot sign up right now. Please contact the APMMS administrator.', 403);
-  if (!institutionName || String(institutionName).trim().length < 3) throw new AppError('Enter the name of your institution', 422, { institutionName: 'Required (at least 3 characters)' });
-  const nameKey = nameKeyOf(institutionName);
-  if (await Institution.exists({ nameKey, status: { $in: ['pending', 'approved', 'suspended'] } })) {
-    throw new AppError('An institution with this name is already registered. If you work there, sign up as a Supervisor or Student and choose it, or ask its coordinator.', 409, { institutionName: 'Already registered' });
-  }
-  const institution = await Institution.create({ name: String(institutionName).trim(), nameKey, type: institutionType || 'university', status: 'pending' });
-  if (departmentName && String(departmentName).trim()) {
-    await Department.create({ institution: institution._id, name: String(departmentName).trim(), code: deptCode(departmentName) });
-  }
-  const user = new User({ name, email, role: 'coordinator', institution: institution._id, isActive: false, approvalStatus: 'pending', emailVerified: false });
-  await user.setPassword(password);
-  await user.save();
-  await audit({ user, ip: req.ip }, { action: 'auth.institution_requested', entityType: 'Institution', entityId: institution._id, summary: `${name} registered the institution ${institution.name} (waiting for email verification)` });
-  const mail = await sendVerification(user._id);
-  return ok(res, { pending: true, verificationRequired: true, email, emailSent: mail.sent, message: 'Almost done. Open the link we emailed you to verify your email. Your institution is activated automatically right after that, and then you can log in.' }, 201);
-}
 
 // Password reset works for institution users AND platform admins (same page, same link; the token tells which).
 export const forgotPassword = asyncHandler(async (req, res) => {
@@ -204,6 +197,11 @@ export const resetPassword = asyncHandler(async (req, res) => {
   account.passwordResetExpires = undefined;
   account.mustChangePassword = false;
   account.tokenVersion += 1; // logs out every existing session
+  if (!admin) {
+    // Opening the emailed link proves the address is theirs, so this also verifies the email and completes an invitation.
+    account.invitePending = false;
+    if (!account.emailVerified) { account.emailVerified = true; account.emailVerifiedAt = new Date(); account.emailVerification = {}; }
+  }
   if (admin) { account.failedLogins = 0; account.lockUntil = undefined; }
   await account.save();
   if (admin) await platformAudit(account, { action: 'admin.password_reset', targetType: 'PlatformAdmin', targetId: account._id, summary: `${account.name} reset their password` }, req.ip);
@@ -287,7 +285,7 @@ export const resendVerification = asyncHandler(async (req, res) => {
 
 /** Coordinator safeguard for when email cannot be delivered (for example no SMTP yet). */
 export const markEmailVerified = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const user = await User.findOne({ _id: req.params.id, ...(req.deptScope ? { department: req.deptScope, role: { $in: ['student', 'supervisor'] } } : {}) });
   if (!user || user.deletedAt) throw new AppError('User not found', 404);
   user.emailVerified = true;
   user.emailVerifiedAt = new Date();
@@ -313,8 +311,9 @@ export const deleteMyAccount = asyncHandler(async (req, res) => {
   if (!me || me.role !== 'coordinator') throw new AppError('Only a coordinator can use this option.', 403);
   if (String(req.body.confirmText || '').trim().toUpperCase() !== 'DELETE') throw new AppError('Type DELETE to confirm.', 422, { confirmText: 'Type DELETE to confirm' });
   if (!(await me.checkPassword(req.body.password))) throw new AppError('Your password is not correct.', 422, { password: 'Incorrect password' });
-  const others = await User.countDocuments({ role: 'coordinator', isActive: true, approvalStatus: 'approved', _id: { $ne: me._id } }); // same institution only (automatic)
-  if (!others) throw new AppError('You are the only active coordinator of your institution. Create another coordinator account first, so the institution is not left without one.', 409, undefined, 'LAST_COORDINATOR');
+  if (me.coordinatorLevel === 'department') throw new AppError('Department coordinators are managed by the platform admin. Please ask them to remove your account.', 403);
+  const others = await User.countDocuments({ role: 'coordinator', coordinatorLevel: { $ne: 'department' }, isActive: true, approvalStatus: 'approved', _id: { $ne: me._id } }); // same institution only (automatic)
+  if (!others) throw new AppError('You are the only institution coordinator. Ask the platform admin to invite another one first, so the institution is not left without one.', 409, undefined, 'LAST_COORDINATOR');
 
   const oldEmail = me.email;
   const name = me.name;

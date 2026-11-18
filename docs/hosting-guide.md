@@ -19,7 +19,7 @@ Commands used by hosting services (from the project root, the folder that contai
 3. **Render:** New -> Web Service -> pick the repository.
    - Build Command: `npm run build`   Start Command: `npm start`   Instance type: Free
    - Environment variables: `NODE_ENV=production`, `MONGO_URI=<Atlas string>`, `JWT_SECRET=<48+ random characters>`, `PLATFORM_SETUP_CODE=<your secret>`, `TRUST_PROXY=1`, `CLIENT_ORIGIN=https://<your-service>.onrender.com`
-4. Open `https://<your-service>.onrender.com/platform/setup` -> create the first **platform admin** (enter the setup code). Institutions then register themselves on the Register page and activate when their coordinator verifies the email.
+4. Open `https://<your-service>.onrender.com/platform/setup` -> create the first **platform admin** (enter the setup code). Then add institutions, faculties, departments and invite coordinators from the platform console (invitation emails need the Brevo SMTP settings).
 5. Do **not** run `npm run seed` on the live site (it creates demo accounts with a known password).
 
 Free Render limits (checked on render.com/docs/free): the service sleeps after 15 minutes without traffic and takes about a minute to wake; the filesystem is not kept; 750 free instance hours per month.

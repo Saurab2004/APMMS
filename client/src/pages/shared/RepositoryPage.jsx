@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Library, Plus, Download, Archive, ArchiveRestore, FileText } from 'lucide-react';
+import { Library, Plus, Download, Archive, ArchiveRestore, FileText, Eye } from 'lucide-react';
 import { Badge, Button, Card, CardBody, EmptyState, PageHeader } from '../../components/common/ui.jsx';
 import DataState from '../../components/common/DataState.jsx';
 import { Modal } from '../../components/common/Modal.jsx';
@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
 import { useForm } from '../../hooks/useForm.js';
+import { FileChip, FileViewerDialog, canView } from '../../components/files/FileViewer.jsx';
 import { api, downloadFile, errMsg, get, patch } from '../../services/api.js';
 import { fmtBytes, fmtDate, titleCase } from '../../utils/format.js';
 
@@ -46,6 +47,7 @@ function Upload({ onClose, onSaved }) {
 }
 
 export default function RepositoryPage() {
+  const [viewing, setViewing] = useState(null);
   const { user } = useAuth();
   const toast = useToast();
   const isCoord = user.role === 'coordinator';
@@ -66,6 +68,7 @@ export default function RepositoryPage() {
         </Select>
         {isCoord && <label className="check"><input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />Show archived</label>}
       </div>
+      {viewing && <FileViewerDialog url={`/repository/${viewing._id}/download`} file={viewing.file} onClose={() => setViewing(null)} />}
       <DataState loading={state.loading} error={state.error} rows={state.data} onRetry={state.reload} empty={<Card><EmptyState icon={Library} title="The repository is empty">{isCoord ? 'Add templates and guidelines for students and supervisors.' : 'Resources shared by the coordinator will appear here.'}</EmptyState></Card>}>
         <div className="grid auto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
           {rows.map((r) => (
@@ -76,6 +79,7 @@ export default function RepositoryPage() {
                 {r.description && <p className="muted small" style={{ margin: 0 }}>{r.description}</p>}
                 <div className="muted small">{r.file.originalName} - {fmtBytes(r.file.size)}<br />Added {fmtDate(r.createdAt)}{r.department ? ` - ${r.department.code}` : ''}{isCoord ? ` - ${r.visibility}` : ''}</div>
                 <div className="row">
+                  {canView(r.file) && <Button variant="secondary" size="sm" icon={Eye} onClick={() => setViewing(r)}>View</Button>}
                   <Button variant="secondary" size="sm" icon={Download} onClick={() => downloadFile(`/repository/${r._id}/download`, r.file.originalName).catch((e) => toast.error(errMsg(e)))}>Download</Button>
                   {isCoord && <Button variant="ghost" size="sm" icon={r.isArchived ? ArchiveRestore : Archive} onClick={() => toggle(r)}>{r.isArchived ? 'Restore' : 'Archive'}</Button>}
                 </div>

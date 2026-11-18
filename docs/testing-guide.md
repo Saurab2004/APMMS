@@ -23,7 +23,9 @@ Browser check (Playwright, done in the sandbox): Batches page (add batch, move t
 
 ## Platform admin console (new)
 
-`server/tests/platform.test.js` (9 tests): first-admin setup (once only; production needs the setup code), admin login separate from institution login (no session crosses over, lock after 5 wrong passwords), adding admins (temporary password, forced change, deactivate/reactivate, founder protected, email cannot clash with an institution account), counts without exposing student data, creating institutions, coordinator help actions (reset password, deactivate, resend/verify email), rename/suspend/restore, platform settings, audit log and health (no secrets), admin forgot-password.
+`server/tests/platform.test.js` (9 tests): first-admin setup (once only; production needs the setup code), admin login separate from institution login (no session crosses over, lock after 5 wrong passwords), adding admins (temporary password, forced change, deactivate/reactivate, founder protected, email cannot clash with an institution account), counts without exposing student data, creating institutions with faculties, departments and invited coordinators (one per department), coordinator help actions (reset-password link, deactivate, resend invitation), rename/suspend/restore, platform settings, audit log and health (no secrets), admin forgot-password.
+
+`server/tests/deptcoordinator.test.js` (2 tests): a department coordinator sees only their department and gets 403 on institution-wide changes; terms created/edited with existing `batchIds`. `institutions.test.js` covers the invitation flow and faculty rules.
 
 Browser check (Playwright, optional): log in at *Login > Platform admin login*, open every console page, add an institution and an admin, change a temporary password.
 

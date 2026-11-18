@@ -55,3 +55,13 @@ export function verificationEmail({ name, link, hours }) {
   const html = `<div style="font-family:Arial,sans-serif;max-width:480px"><h2>Confirm your email</h2><p>Hello ${esc(name)},</p><p>Welcome to APMMS. Please confirm your email address to finish creating your account.</p><p><a href="${esc(link)}" style="background:#2f5bea;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">Verify my email</a></p><p style="color:#555;font-size:13px">Or copy this link into your browser:<br>${esc(link)}</p><p style="color:#555;font-size:13px">The link works for ${hours} hours and can be used once. If you did not create an account, ignore this email.</p></div>`;
   return { subject: 'Verify your email for APMMS', text, html };
 }
+
+export function invitationEmail({ name, institutionName, roleText, link, days, invitedBy, reset }) {
+  const subject = reset ? 'Set a new password for APMMS' : `You were invited to ${institutionName} on APMMS`;
+  const intro = reset
+    ? `The APMMS administrator asked you to choose a new password.`
+    : `${invitedBy ? `${invitedBy} added` : 'You were added'} you as ${roleText} of ${institutionName} on APMMS.`;
+  const text = `Hello ${name},\n\n${intro}\n\nOpen this link to set your password:\n\n${link}\n\nThe link works for ${days} days and can be used once. After that, log in with your email and the new password.\n`;
+  const html = `<div style="font-family:Arial,sans-serif;max-width:480px"><h2>${reset ? 'Choose a new password' : 'Set up your APMMS account'}</h2><p>Hello ${esc(name)},</p><p>${esc(intro)}</p><p><a href="${esc(link)}" style="background:#2f5bea;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;display:inline-block">Set my password</a></p><p style="color:#555;font-size:13px">Or copy this link into your browser:<br>${esc(link)}</p><p style="color:#555;font-size:13px">The link works for ${days} days and can be used once.</p></div>`;
+  return { subject, text, html };
+}

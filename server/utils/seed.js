@@ -4,7 +4,7 @@
 import mongoose from 'mongoose';
 import env from '../config/env.js';
 import { connectDB } from '../config/db.js';
-import { User, Department, AcademicTerm, Batch, EvaluationRubric, Institution, PlatformAdmin, PlatformSetting } from '../models/index.js';
+import { User, Department, AcademicTerm, Batch, Faculty, EvaluationRubric, Institution, PlatformAdmin, PlatformSetting } from '../models/index.js';
 import { runInInstitution } from './tenant.js';
 
 export const DEMO_PASSWORD = 'Demo@12345';
@@ -26,7 +26,8 @@ export async function seed({ log = console.log } = {}) {
 }
 
 async function seedInside({ log, inst }) {
-  const dep = await Department.findOneAndUpdate({ code: 'CSE' }, { name: 'Computer Science & Engineering', code: 'CSE', description: 'Demo department' }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  const faculty = await Faculty.findOneAndUpdate({ name: 'Faculty of Science and Technology' }, { name: 'Faculty of Science and Technology', code: 'FST' }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  const dep = await Department.findOneAndUpdate({ code: 'CSE' }, { name: 'Computer Science & Engineering', code: 'CSE', description: 'Demo department', faculty: faculty._id }, { upsert: true, new: true, setDefaultsOnInsert: true });
   const year = new Date().getFullYear();
   let term = await AcademicTerm.findOne({ isCurrent: true });
   if (!term) {
@@ -45,7 +46,8 @@ async function seedInside({ log, inst }) {
   if (!batch) batch = await Batch.create({ name: `${year} Batch`, department: dep._id, intakeYear: year, term: term._id });
 
   const people = [
-    { name: 'Dr. Carol Coordinator', email: 'coordinator@apmms.test', role: 'coordinator' },
+    { name: 'Dr. Carol Coordinator', email: 'coordinator@apmms.test', role: 'coordinator', coordinatorLevel: 'institution' },
+    { name: 'Dr. Dev Department', email: 'deptcoordinator@apmms.test', role: 'coordinator', coordinatorLevel: 'department', department: dep._id },
     { name: 'Prof. Sam Supervisor', email: 'supervisor@apmms.test', role: 'supervisor', designation: 'Associate Professor', department: dep._id },
     { name: 'Prof. Sara Second', email: 'supervisor2@apmms.test', role: 'supervisor', designation: 'Lecturer', department: dep._id },
     { name: 'Alice Student', email: 'alice@apmms.test', role: 'student', studentId: 'CSE-001', department: dep._id, term: term._id, batch: batch._id },

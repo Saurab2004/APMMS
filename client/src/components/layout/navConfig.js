@@ -98,6 +98,12 @@ export const NAV = {
 export const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
 /** The sidebar for one user. */
+const INSTITUTION_ONLY = ['/coordinator/departments', '/coordinator/academic', '/coordinator/settings', '/coordinator/audit', '/coordinator/system'];
+
 export function navFor(user) {
-  return NAV[user.role] || [];
+  const groups = NAV[user.role] || [];
+  if (user.role === 'coordinator' && user.coordinatorLevel === 'department') {
+    return groups.map((g) => ({ ...g, items: g.items.filter((i) => !INSTITUTION_ONLY.includes(i.to)) })).filter((g) => g.items.length);
+  }
+  return groups;
 }

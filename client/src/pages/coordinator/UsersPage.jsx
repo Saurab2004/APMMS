@@ -44,8 +44,8 @@ function UserForm({ user, departments, terms, batches, onClose, onSaved }) {
       <form className="stack" onSubmit={submit}>
         <Field label="Full name" required error={f.errors.name}><Input {...f.bind('name')} maxLength={120} required /></Field>
         <Field label="Email" required error={f.errors.email}><Input type="email" {...f.bind('email')} disabled={editing} required /></Field>
-        {!editing && <Field label="Role" required error={f.errors.role}><Select {...f.bind('role')}><option value="student">Student</option><option value="supervisor">Supervisor</option><option value="coordinator">Coordinator</option></Select></Field>}
-        {v.role !== 'coordinator' && <Field label="Department" required error={f.errors.departmentId}><Select {...f.bind('departmentId')}><option value="">Select...</option>{departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}</Select></Field>}
+        {!editing && <Field label="Role" required error={f.errors.role}><Select {...f.bind('role')}><option value="student">Student</option><option value="supervisor">Supervisor</option></Select></Field>}
+        {<Field label="Department" required error={f.errors.departmentId}><Select {...f.bind('departmentId')}><option value="">Select...</option>{departments.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}</Select></Field>}
         {v.role === 'student' && <>
           <Field label="Student ID" required error={f.errors.studentId}><Input {...f.bind('studentId')} maxLength={30} /></Field>
           <Field label="Batch" help="The student's groups and deadlines follow this batch's term." error={f.errors.batchId}><Select {...f.bind('batchId')}><option value="">{batches.some((b) => b.department?._id === v.departmentId) ? 'Select batch...' : 'No batch in this department'}</option>{batches.filter((b) => b.department?._id === v.departmentId).map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}</Select></Field>

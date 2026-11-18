@@ -8,7 +8,7 @@
 //      (rename it later; the coordinator can then move students into proper batches)
 //   4. institutions still "pending" whose coordinator has verified the email are activated
 import mongoose from 'mongoose';
-import { Institution, User, Department, AcademicTerm, Batch, ProjectGroup, Project } from '../models/index.js';
+import { Institution, User, Department, AcademicTerm, Batch, Faculty, ProjectGroup, Project } from '../models/index.js';
 import { runUnscoped } from '../utils/tenant.js';
 
 const LEGACY_INDEXES = [
@@ -48,6 +48,7 @@ export async function migrateToInstitutions({ log = console.log } = {}) {
       log(`[migrate] activated "${inst.name}" (its coordinator had verified the email)`);
     }
 
+    await facultyForExistingDepartments(log);
     await batchExistingStudents(log);
   });
 }
@@ -71,5 +72,18 @@ async function batchExistingStudents(log) {
     await ProjectGroup.updateMany({ _id: { $in: gids } }, { $set: { batch: batch._id } });
     await Project.updateMany({ group: { $in: gids }, batch: { $exists: false } }, { $set: { batch: batch._id } });
     log(`[migrate] "${dep.name}": ${students.length} students and ${groups.length} groups put into the batch "Existing students"`);
+  }
+}
+
+// Departments created before faculties existed are put under one faculty called "General" (rename it later).
+async function facultyForExistingDepartments(log) {
+  const loose = await Department.find({ faculty: { $exists: false } }).select('institution').lean();
+  const byInstitution = new Map();
+  for (const d of loose) byInstitution.set(String(d.institution), [...(byInstitution.get(String(d.institution)) || []), d._id]);
+  for (const [inst, ids] of byInstitution) {
+    let faculty = await Faculty.findOne({ institution: inst, name: 'General' });
+    if (!faculty) faculty = await Faculty.create({ institution: inst, name: 'General', description: 'Created automatically for departments that existed before faculties. Rename it or move departments to their real faculty.' });
+    await Department.updateMany({ _id: { $in: ids } }, { $set: { faculty: faculty._id } });
+    log(`[migrate] ${ids.length} department(s) put under the faculty "General"`);
   }
 }

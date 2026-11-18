@@ -14,6 +14,10 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ROLES, required: true, index: true },
     department: { type: Schema.Types.ObjectId, ref: 'Department' },
+    // Coordinators: 'institution' (whole institution) or 'department' (only their own department). No value counts as 'institution'.
+    coordinatorLevel: { type: String, enum: ['institution', 'department'] },
+    invitePending: { type: Boolean, default: false }, // invited by email, has not set a password yet
+    invitedAt: { type: Date },
     batch: { type: Schema.Types.ObjectId, ref: 'Batch', index: true }, // students: their intake batch
     term: { type: Schema.Types.ObjectId, ref: 'AcademicTerm' }, // students: follows the batch's current term
     studentId: { type: String, trim: true, maxlength: 40 },

@@ -12,15 +12,17 @@ const anon = () => new Client();
 let depId;
 let instId;
 let batchId;
-const reg = (over = {}) => anon().post('/api/auth/register', { name: 'Vera Verify', email: 'vera@apmms.test', password: 'Passw0rd1', studentId: 'CSE-777', institutionId: instId, departmentId: depId, batchId, role: 'student', ...over });
+let facId;
+const reg = (over = {}) => anon().post('/api/auth/register', { name: 'Vera Verify', email: 'vera@apmms.test', password: 'Passw0rd1', studentId: 'CSE-777', institutionId: instId, facultyId: facId, departmentId: depId, batchId, role: 'student', ...over });
 
 test('registration sends a verification email and does NOT log the student in', async () => {
   const inst = (await anon().get('/api/auth/registration-options')).body.data.institutions[0];
   instId = inst._id;
   depId = inst.departments[0]._id;
+  facId = inst.departments[0].faculty;
   batchId = inst.departments[0].batches[0]._id;
   const c = anon();
-  const r = await c.post('/api/auth/register', { name: 'Vera Verify', email: 'vera@apmms.test', password: 'Passw0rd1', studentId: 'CSE-777', institutionId: instId, departmentId: depId, batchId, role: 'student' });
+  const r = await c.post('/api/auth/register', { name: 'Vera Verify', email: 'vera@apmms.test', password: 'Passw0rd1', studentId: 'CSE-777', institutionId: instId, facultyId: facId, departmentId: depId, batchId, role: 'student' });
   assert.equal(r.status, 201);
   assert.equal(r.body.data.verificationRequired, true);
   assert.equal((await c.get('/api/auth/me')).status, 401, 'no session cookie yet');

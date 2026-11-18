@@ -6,7 +6,9 @@ import fs from 'fs';
 import path from 'path';
 import mongoose from 'mongoose';
 import env from '../config/env.js';
-import { Institution, User, PlatformAdmin, PlatformAudit, ProjectGroup, Project, Department, INSTITUTION_TYPES } from '../models/index.js';
+import { Institution, User, PlatformAdmin, PlatformAudit, ProjectGroup, Project, Department, Faculty, SystemSetting, INSTITUTION_TYPES } from '../models/index.js';
+import { addFaculty, changeFaculty, addDepartment, changeDepartment, structureOf } from '../services/structure.js';
+import { inviteCoordinator, issueSetPasswordLink, roleText } from '../services/invitations.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, isId, sameId, passwordProblem, generateTempPassword, escapeRegex, parsePage, pageMeta } from '../utils/helpers.js';
 import { setAdminCookie, clearAdminCookie } from '../middleware/platformAuth.js';
@@ -239,7 +241,7 @@ export const getInstitution = asyncHandler(async (req, res) => {
   const inst = await Institution.findById(req.params.id).lean();
   if (!inst) throw notFound('Institution');
   const counts = await countsByInstitution();
-  const coordinators = await User.find({ institution: inst._id, role: 'coordinator', deletedAt: null }).select('name email emailVerified isActive approvalStatus lastLoginAt createdAt').lean();
+  const coordinators = await User.find({ institution: inst._id, role: 'coordinator', deletedAt: null }).populate('department', 'name').select('name email coordinatorLevel department invitePending emailVerified isActive approvalStatus lastLoginAt createdAt').lean();
   const lastLogin = await User.findOne({ institution: inst._id, lastLoginAt: { $ne: null } }).sort({ lastLoginAt: -1 }).select('lastLoginAt').lean();
   ok(res, { ...inst, counts: counts.get(String(inst._id)) || emptyCounts, coordinators, lastActivityAt: lastLogin?.lastLoginAt || null });
 });
@@ -305,24 +307,82 @@ export const updateInstitution = asyncHandler(async (req, res) => {
 });
 
 /** Admin creates an institution and its first coordinator directly (already active; temporary password is shown once). */
+// Adds an institution. Its first (institution-level) coordinator can be invited right away; faculties, departments and
+// department coordinators are added afterwards from the institution page.
 export const createInstitution = asyncHandler(async (req, res) => {
   const { institutionName, institutionType, coordinatorName, coordinatorEmail } = req.body;
   const nameKey = String(institutionName).trim().toLowerCase().replace(/\s+/g, ' ');
   if (nameKey.length < 3) throw new AppError('Enter the institution name', 422, { institutionName: 'Too short' });
   if (await Institution.exists({ nameKey, status: { $in: ['pending', 'approved', 'suspended'] } })) throw new AppError('An institution with this name already exists', 409, { institutionName: 'Already registered' });
-  const email = String(coordinatorEmail).trim().toLowerCase();
-  if (await User.exists({ email }) || await PlatformAdmin.exists({ email })) throw new AppError('This email is already used by another account', 409, { coordinatorEmail: 'Already used' });
+  if (coordinatorEmail) {
+    const email = String(coordinatorEmail).trim().toLowerCase();
+    if (await User.exists({ email }) || await PlatformAdmin.exists({ email })) throw new AppError('This email is already used by another account', 409, { coordinatorEmail: 'Already used' });
+    if (!coordinatorName) throw new AppError('Enter the coordinator name', 422, { coordinatorName: 'Required' });
+  }
   const inst = await Institution.create({ name: String(institutionName).trim(), nameKey, type: institutionType || 'university', status: 'approved', decidedAt: new Date(), statusNote: 'Created by a platform admin' });
-  const tempPassword = generateTempPassword();
-  const coordinator = new User({ name: coordinatorName, email, role: 'coordinator', institution: inst._id, approvalStatus: 'approved', isActive: true, emailVerified: true, emailVerifiedAt: new Date(), mustChangePassword: true });
-  await coordinator.setPassword(tempPassword);
-  await coordinator.save();
-  const emailed = await mailCredentials({ to: email, name: coordinatorName, subject: `${inst.name} is ready on APMMS`, intro: `A workspace for ${inst.name} was created for you on APMMS. You are its coordinator.`, tempPassword, loginUrl: `${env.appUrl}/login` });
-  await platformAudit(req.admin, { action: 'institution.created', targetType: 'Institution', targetId: inst._id, summary: `${req.admin.name} created ${inst.name} with coordinator ${email}` }, req.ip);
-  ok(res, { institution: inst, coordinator: { _id: coordinator._id, name: coordinatorName, email }, tempPassword, emailed }, 201);
+  // Institutions added by the admin start strict: new students must be approved by their department coordinator.
+  await SystemSetting.create({ institution: inst._id, key: 'requireStudentApproval', value: true });
+  let invite = null;
+  if (coordinatorEmail) {
+    invite = await inviteCoordinator({ institution: inst, name: coordinatorName, email: coordinatorEmail, level: 'institution', invitedBy: req.admin.name });
+  }
+  await platformAudit(req.admin, { action: 'institution.created', targetType: 'Institution', targetId: inst._id, summary: `${req.admin.name} created ${inst.name}${invite ? ` and invited coordinator ${invite.user.email}` : ''}` }, req.ip);
+  ok(res, { institution: inst, coordinator: invite ? { _id: invite.user._id, name: invite.user.name, email: invite.user.email } : null, emailed: invite?.sent, link: invite?.link }, 201);
 });
 
-// ------------------------------------------------------------------ coordinators (account-level help only)
+const instOr404 = async (id) => {
+  if (!isId(id)) throw notFound('Institution');
+  const inst = await Institution.findById(id);
+  if (!inst || inst.status === 'deleted') throw notFound('Institution');
+  return inst;
+};
+
+export const getStructure = asyncHandler(async (req, res) => {
+  const inst = await instOr404(req.params.id);
+  ok(res, { ...(await structureOf(inst._id)), emailConfigured: emailConfigured() });
+});
+
+export const createFacultyFor = asyncHandler(async (req, res) => {
+  const inst = await instOr404(req.params.id);
+  const f = await addFaculty(inst._id, req.body);
+  await platformAudit(req.admin, { action: 'faculty.created', targetType: 'Institution', targetId: inst._id, summary: `${req.admin.name} added faculty ${f.name} to ${inst.name}` }, req.ip);
+  ok(res, f, 201);
+});
+
+export const updateFacultyOf = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw notFound('Faculty');
+  const existing = await Faculty.findById(req.params.id).lean();
+  if (!existing) throw notFound('Faculty');
+  const f = await changeFaculty(existing.institution, req.params.id, req.body);
+  await platformAudit(req.admin, { action: 'faculty.updated', targetType: 'Institution', targetId: existing.institution, summary: `${req.admin.name} updated faculty ${f.name}` }, req.ip);
+  ok(res, f);
+});
+
+export const createDepartmentFor = asyncHandler(async (req, res) => {
+  const inst = await instOr404(req.params.id);
+  const d = await addDepartment(inst._id, req.body);
+  await platformAudit(req.admin, { action: 'department.created', targetType: 'Institution', targetId: inst._id, summary: `${req.admin.name} added department ${d.name} to ${inst.name}` }, req.ip);
+  ok(res, d, 201);
+});
+
+export const updateDepartmentOf = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw notFound('Department');
+  const existing = await Department.findById(req.params.id).lean();
+  if (!existing) throw notFound('Department');
+  const d = await changeDepartment(existing.institution, req.params.id, req.body);
+  await platformAudit(req.admin, { action: 'department.updated', targetType: 'Institution', targetId: existing.institution, summary: `${req.admin.name} updated department ${d.name}` }, req.ip);
+  ok(res, d);
+});
+
+/** Invites an institution-level coordinator, or the coordinator of one department (a department has one). */
+export const inviteCoordinatorFor = asyncHandler(async (req, res) => {
+  const inst = await instOr404(req.params.id);
+  const { name, email, level = 'department', departmentId } = req.body;
+  const r = await inviteCoordinator({ institution: inst, name, email, level, departmentId, invitedBy: req.admin.name });
+  await platformAudit(req.admin, { action: 'coordinator.invited', targetType: 'User', targetId: r.user._id, summary: `${req.admin.name} invited ${r.user.email} as ${level} coordinator of ${inst.name}` }, req.ip);
+  ok(res, { coordinator: { _id: r.user._id, name: r.user.name, email: r.user.email }, emailed: r.sent, link: r.link }, 201);
+});
+
 export const listCoordinators = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePage(req.query, { defaultLimit: 25 });
   const filter = { role: 'coordinator', deletedAt: null };
@@ -331,7 +391,7 @@ export const listCoordinators = asyncHandler(async (req, res) => {
   if (req.query.state === 'unverified') filter.emailVerified = false;
   if (req.query.q) { const re = new RegExp(escapeRegex(String(req.query.q).slice(0, 80)), 'i'); filter.$or = [{ name: re }, { email: re }]; }
   const [items, total] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('institution', 'name status').select('name email institution emailVerified isActive approvalStatus lastLoginAt createdAt').lean(),
+    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('institution', 'name status').populate('department', 'name').select('name email institution department coordinatorLevel invitePending emailVerified isActive approvalStatus lastLoginAt createdAt').lean(),
     User.countDocuments(filter),
   ]);
   res.json({ success: true, data: items, meta: pageMeta(page, limit, total) });
@@ -349,14 +409,13 @@ export const coordinatorAction = asyncHandler(async (req, res) => {
     user.isActive = action === 'reactivate';
     if (action === 'deactivate') user.tokenVersion += 1; // logs them out at once
     await user.save();
-  } else if (action === 'reset-password') {
-    const tempPassword = generateTempPassword();
-    await user.setPassword(tempPassword);
-    user.mustChangePassword = true;
+  } else if (action === 'reset-password' || action === 'resend-invitation') {
+    // No password is ever shown on screen: the coordinator gets an emailed link to choose their own.
+    const inst = await Institution.findById(user.institution).select('name').lean();
+    const dep = user.department ? await Department.findById(user.department).select('name').lean() : null;
     user.tokenVersion += 1;
-    await user.save();
-    const emailed = await mailCredentials({ to: user.email, name: user.name, subject: 'Your APMMS password was reset', intro: 'The APMMS administrator reset your password.', tempPassword, loginUrl: `${env.appUrl}/login` });
-    result = { tempPassword, emailed };
+    const r = await issueSetPasswordLink(user, { institutionName: inst?.name || 'APMMS', roleText: roleText(user, dep), invitedBy: req.admin.name, reset: action === 'reset-password' && !user.invitePending });
+    result = { emailed: r.sent, link: r.link };
   } else if (action === 'resend-verification') {
     if (user.emailVerified) throw new AppError('This email is already verified.', 409);
     const mail = await issueVerificationEmail(user);

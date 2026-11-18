@@ -5,12 +5,14 @@ import { Button, Card, EmptyState, Loading, PageHeader, Alert, Badge } from '../
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useSocket } from '../../context/SocketContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import { FileViewerDialog, canView } from '../../components/files/FileViewer.jsx';
 import { api, downloadFile, errMsg, get, getPaged } from '../../services/api.js';
 import { cx, fmtBytes, fmtDateTime, fmtTime, timeAgo } from '../../utils/format.js';
 
 const ACCEPT = ['pdf', 'docx', 'png', 'jpg', 'jpeg', 'txt', 'zip'];
 
 function Message({ m, mine, convId, othersCount }) {
+  const [viewing, setViewing] = useState(null);
   const readByOthers = (m.readBy || []).filter((r) => String(r.user) !== String(m.sender?._id || m.sender)).length;
   return (
     <div className={cx('msg', mine && 'mine')}>
@@ -27,8 +29,10 @@ function Message({ m, mine, convId, othersCount }) {
             <a href="#download" onClick={(e) => { e.preventDefault(); downloadFile(`/conversations/${convId}/messages/${m._id}/attachments/${i}`, a.originalName); }}>
               <FileText size={14} style={{ verticalAlign: '-2px' }} /> {a.originalName} <small>({fmtBytes(a.size)})</small>
             </a>
+            {canView(a) && <> <a href="#view" onClick={(e) => { e.preventDefault(); setViewing({ ...a, i }); }}>View</a></>}
           </div>
         ))}
+        {viewing && <FileViewerDialog url={`/conversations/${convId}/messages/${m._id}/attachments/${viewing.i}`} file={viewing} onClose={() => setViewing(null)} />}
       </div>
     </div>
   );

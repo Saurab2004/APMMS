@@ -123,7 +123,7 @@ export function DeleteAccountCard() {
   const [confirmText, setConfirmText] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  if (user.role !== 'coordinator') return null;
+  if (user.role !== 'coordinator' || user.coordinatorLevel === 'department') return null;
   const close = () => { setOpen(false); setPassword(''); setConfirmText(''); setError(''); };
   const submit = async () => {
     setBusy(true); setError('');
@@ -159,52 +159,4 @@ export function DeleteAccountCard() {
   );
 }
 
-/** Coordinator only: delete the whole institution workspace (for example after a trial). */
-export function DeleteInstitutionCard() {
-  const { user, setUser } = useAuth();
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirmName, setConfirmName] = useState('');
-  const [eraseNow, setEraseNow] = useState(false);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const name = user.institution?.name;
-  if (user.role !== 'coordinator' || !name) return null;
-  const close = () => { setOpen(false); setPassword(''); setConfirmName(''); setEraseNow(false); setError(''); };
-  const submit = async () => {
-    setBusy(true); setError('');
-    try {
-      const r = await post('/institutions/mine/delete', { password, confirmName, eraseNow });
-      toast.success(r.message);
-      setUser(null);
-    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
-  };
-  return (
-    <Card className="danger-zone">
-      <CardHead title="Delete my institution" icon={Trash2} />
-      <CardBody className="stack">
-        <p className="muted small">Trying APMMS and not happy? You can delete <strong>{name}</strong> and everything in it: all its users, projects, reports and files. Everyone at the institution is signed out at once.</p>
-        <div><Button variant="danger" icon={Trash2} onClick={() => setOpen(true)}>Delete my institution</Button></div>
-      </CardBody>
-      {open && (
-        <Modal title={`Delete ${name}?`} onClose={close} footer={<><Button variant="secondary" onClick={close}>Cancel</Button><Button variant="danger" loading={busy} disabled={!password || !confirmName.trim()} onClick={submit}>Delete institution</Button></>}>
-          <div className="stack">
-            <Alert tone="danger">This affects <strong>every</strong> student, supervisor and coordinator of {name}. They lose access immediately.</Alert>
-            <ul className="small" style={{ paddingLeft: 18, margin: 0 }}>
-              <li>By default the data is kept for a short grace period, then erased for good. The APMMS administrator can restore it before then.</li>
-              <li>Tick the box below to erase everything right now instead. That cannot be undone.</li>
-              <li>If you only want to remove yourself, use "Delete my account" instead.</li>
-            </ul>
-            {error && <Alert tone="danger">{error}</Alert>}
-            <label className="row" style={{ gap: 8 }}><input type="checkbox" checked={eraseNow} onChange={(e) => setEraseNow(e.target.checked)} /> <span>Erase everything immediately (cannot be restored)</span></label>
-            <Field label="Your password" required><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-            <Field label={`Type the institution name: ${name}`} required><Input value={confirmName} onChange={(e) => setConfirmName(e.target.value)} autoComplete="off" /></Field>
-          </div>
-        </Modal>
-      )}
-    </Card>
-  );
-}
-
-export const AccountPage = () => (<><PageHeader title="Profile & account" subtitle="Your details, notifications and password." /><div className="stack"><ProfileForm /><PreferencesForm /><PasswordForm /><DeleteAccountCard /><DeleteInstitutionCard /></div></>);
+export const AccountPage = () => (<><PageHeader title="Profile & account" subtitle="Your details, notifications and password." /><div className="stack"><ProfileForm /><PreferencesForm /><PasswordForm /><DeleteAccountCard /></div></>);

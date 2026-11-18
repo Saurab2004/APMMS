@@ -35,15 +35,13 @@ test('security basics: auth required, CSRF header required, RBAC enforced', asyn
   const reg = await anon.get('/api/auth/registration-options');
   const inst = reg.body.data.institutions[0];
   const depId = inst.departments[0]._id;
-  const r = await new Client().post('/api/auth/register', { name: 'Eve New', email: 'eve@apmms.test', password: 'Passw0rd1', studentId: 'CSE-099', institutionId: inst._id, departmentId: depId, batchId: inst.departments[0].batches[0]._id, role: 'student' });
+  const r = await new Client().post('/api/auth/register', { name: 'Eve New', email: 'eve@apmms.test', password: 'Passw0rd1', studentId: 'CSE-099', institutionId: inst._id, facultyId: inst.departments[0].faculty, departmentId: depId, batchId: inst.departments[0].batches[0]._id, role: 'student' });
   assert.equal(r.status, 201);
   assert.equal(r.body.data.verificationRequired, true, 'students must verify their email first (no automatic login)');
   assert.equal(r.body.data.user, undefined);
-  // a coordinator sign-up never gives instant access: it creates a PENDING institution
+  // nobody can sign up as a coordinator: those accounts are invited by the platform admin
   const sneaky = await new Client().post('/api/auth/register', { name: 'Eve Boss', email: 'eve2@apmms.test', password: 'Passw0rd1', role: 'coordinator', institutionName: 'Eve Academy' });
-  assert.equal(sneaky.status, 201);
-  assert.equal(sneaky.body.data.pending, true);
-  assert.equal(sneaky.body.data.user, undefined);
+  assert.equal(sneaky.status, 422);
 });
 
 test('groups: create, invite, join by code, duplicate membership blocked', async () => {
@@ -305,8 +303,7 @@ test('one login page for all roles: role must match, supervisors need approval, 
   const inst = opts.institutions.find((i) => i.name === 'Demo University');
   const depId = inst.departments[0]._id;
   const institutionId = inst._id;
-  assert.equal(opts.platform.allowInstitutionRegistration, true);
-  const reg = await anon().post('/api/auth/register', { name: 'Dr New Sup', email: 'newsup@apmms.test', password: 'Passw0rd1', role: 'supervisor', institutionId, departmentId: depId, designation: 'Lecturer' });
+  const reg = await anon().post('/api/auth/register', { name: 'Dr New Sup', email: 'newsup@apmms.test', password: 'Passw0rd1', role: 'supervisor', institutionId, facultyId: inst.departments[0].faculty, departmentId: depId, designation: 'Lecturer' });
   assert.equal(reg.status, 201, JSON.stringify(reg.body));
   assert.equal(reg.body.data.pending, true);
   await verifyFromOutbox('newsup@apmms.test');
@@ -326,18 +323,14 @@ test('one login page for all roles: role must match, supervisors need approval, 
   assert.equal((await coord.post(`/api/users/${pid}/approval`, { decision: 'approve' })).status, 409, 'already decided');
 
   // a second rejected request
-  await anon().post('/api/auth/register', { name: 'Rej', email: 'rej@apmms.test', password: 'Passw0rd1', role: 'supervisor', institutionId, departmentId: depId });
+  await anon().post('/api/auth/register', { name: 'Rej', email: 'rej@apmms.test', password: 'Passw0rd1', role: 'supervisor', institutionId, facultyId: inst.departments[0].faculty, departmentId: depId });
   await verifyFromOutbox('rej@apmms.test');
   const rid = (await coord.get('/api/users?approval=pending')).body.data[0]._id;
   assert.equal((await coord.post(`/api/users/${rid}/approval`, { decision: 'reject', note: 'Not on staff list' })).status, 200);
   assert.match((await anon().post('/api/auth/login', { email: 'rej@apmms.test', password: 'Passw0rd1' })).body.message, /not approved/);
 
-  // a new coordinator registers a NEW institution; it activates when the email is verified (no setup code, nobody approves)
-  const c1 = await anon().post('/api/auth/register', { name: 'Fake Boss', email: 'boss@apmms.test', password: 'Passw0rd1', role: 'coordinator', institutionName: 'Boss College' });
-  assert.equal(c1.status, 201);
-  assert.equal(c1.body.data.pending, true);
-  // and a name that is already taken is refused
-  assert.equal((await anon().post('/api/auth/register', { name: 'Copy', email: 'copy@apmms.test', password: 'Passw0rd1', role: 'coordinator', institutionName: 'demo   university' })).status, 409);
+  // coordinator sign-up no longer exists
+  assert.equal((await anon().post('/api/auth/register', { name: 'Fake Boss', email: 'boss@apmms.test', password: 'Passw0rd1', role: 'coordinator', institutionName: 'Boss College' })).status, 422);
   // students still work and cannot pick a hidden role value
   assert.equal((await anon().post('/api/auth/register', { name: 'Hack', email: 'hack@apmms.test', password: 'Passw0rd1', role: 'admin', institutionId, departmentId: depId })).status, 422);
 });

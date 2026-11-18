@@ -92,26 +92,31 @@ export const supervisorDashboard = asyncHandler(async (req, res) => {
 // ---------------- Coordinator ----------------
 const lifecycleStages = ['forming', 'proposal', 'active', 'final_review', 'ready_for_evaluation', 'evaluated', 'completed', 'archived'];
 
-export const coordinatorDashboard = asyncHandler(async (_req, res) => {
+export const coordinatorDashboard = asyncHandler(async (req, res) => {
   const now = new Date();
-  const pendingApprovals = await User.countDocuments({ approvalStatus: 'pending' });
+  // A department coordinator sees the numbers of their own department only.
+  const dept = req.deptScope;
+  const uf = dept ? { department: dept } : {};
+  const pids = dept ? await Project.find({ department: dept }).distinct('_id') : null;
+  const byP = pids ? { project: { $in: pids } } : {};
+  const pendingApprovals = await User.countDocuments({ ...uf, approvalStatus: 'pending' });
   const [users, projectsByStatus, proposalsByStatus, reportsAgg, overdueMs, noSupervisor, ungrouped, evalCounts, recentAudit, supervisors] = await Promise.all([
-    User.aggregate([{ $group: { _id: { r: '$role', a: '$isActive' }, n: { $sum: 1 } } }]),
-    Project.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-    Proposal.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-    ProgressReport.aggregate([{ $match: { status: { $ne: 'draft' } } }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
-    Milestone.countDocuments({ status: { $in: ['pending', 'in_progress'] }, plannedDate: { $lt: now } }),
-    Project.countDocuments({ supervisor: { $exists: false }, status: { $nin: ['archived'] } }),
+    User.aggregate([{ $match: uf }, { $group: { _id: { r: '$role', a: '$isActive' }, n: { $sum: 1 } } }]),
+    Project.aggregate([{ $match: uf }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+    Proposal.aggregate([{ $match: byP }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+    ProgressReport.aggregate([{ $match: { ...byP, status: { $ne: 'draft' } } }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+    Milestone.countDocuments({ ...byP, status: { $in: ['pending', 'in_progress'] }, plannedDate: { $lt: now } }),
+    Project.countDocuments({ ...uf, supervisor: { $exists: false }, status: { $nin: ['archived'] } }),
     (async () => {
       const grouped = await ProjectGroup.find({ status: 'active' }).distinct('activeMemberIds');
-      return User.countDocuments({ role: 'student', isActive: true, _id: { $nin: grouped } });
+      return User.countDocuments({ ...uf, role: 'student', isActive: true, _id: { $nin: grouped } });
     })(),
-    Evaluation.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]),
-    AuditLog.find().populate('actor', 'name role').sort({ createdAt: -1 }).limit(8).lean(),
-    User.find({ role: 'supervisor', isActive: true }).select('name maxProjects').lean(),
+    Evaluation.aggregate([{ $match: byP }, { $group: { _id: '$status', n: { $sum: 1 } } }]),
+    dept ? [] : AuditLog.find().populate('actor', 'name role').sort({ createdAt: -1 }).limit(8).lean(),
+    User.find({ ...uf, role: 'supervisor', isActive: true }).select('name maxProjects').lean(),
   ]);
   const uc = (role) => users.filter((u) => u._id.r === role && u._id.a).reduce((s, u) => s + u.n, 0);
-  const load = await Project.aggregate([{ $match: { supervisor: { $ne: null }, status: { $nin: ['archived', 'completed'] } } }, { $group: { _id: '$supervisor', n: { $sum: 1 } } }]);
+  const load = await Project.aggregate([{ $match: { ...uf, supervisor: { $ne: null }, status: { $nin: ['archived', 'completed'] } } }, { $group: { _id: '$supervisor', n: { $sum: 1 } } }]);
   const stat = (arr, k) => arr.find((x) => x._id === k)?.n || 0;
   ok(res, {
     users: { students: uc('student'), supervisors: uc('supervisor'), coordinators: uc('coordinator'), evaluators: uc('evaluator') },
@@ -131,9 +136,10 @@ export const coordinatorDashboard = asyncHandler(async (_req, res) => {
 });
 
 // ---------------- Analytics (coordinator) ----------------
-async function matchingProjectIds(q) {
+async function matchingProjectIds(q, dept) {
   const f = {};
   if (isId(q.department)) f.department = q.department;
+  if (dept) f.department = dept; // a department coordinator is always limited to their department
   if (isId(q.term)) f.term = q.term;
   if (isId(q.batch)) f.batch = q.batch;
   if (isId(q.supervisor)) f.supervisor = q.supervisor;
@@ -143,7 +149,7 @@ async function matchingProjectIds(q) {
 }
 
 export async function computeAnalytics(req) {
-  const ids = await matchingProjectIds(req.query);
+  const ids = await matchingProjectIds(req.query, req.deptScope);
   const pFilter = ids ? { _id: { $in: ids } } : {};
   const byProject = ids ? { project: { $in: ids } } : {};
   const now = new Date();
@@ -204,7 +210,7 @@ export async function computeAnalytics(req) {
 export const analytics = asyncHandler(async (req, res) => ok(res, await computeAnalytics(req)));
 
 export const exportProjectsCsv = asyncHandler(async (req, res) => {
-  const ids = await matchingProjectIds(req.query);
+  const ids = await matchingProjectIds(req.query, req.deptScope);
   const projects = await Project.find(ids ? { _id: { $in: ids } } : {})
     .populate('group', 'name members')
     .populate('supervisor', 'name')

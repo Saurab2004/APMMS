@@ -6,7 +6,10 @@ import { asyncHandler, ok, parsePage, pageMeta, parseSort, escapeRegex, isId, ge
 import { audit } from '../services/audit.js';
 import { sameId, idStr } from '../utils/helpers.js';
 
-const CREATABLE_ROLES = ['student', 'supervisor', 'coordinator'];
+const CREATABLE_ROLES = ['student', 'supervisor']; // coordinators are invited by email, never created here
+
+/** A department coordinator can only reach students and supervisors of their own department. */
+const scopeOf = (req) => (req.deptScope ? { department: req.deptScope, role: { $in: ['student', 'supervisor'] } } : {});
 
 export const listUsers = asyncHandler(async (req, res) => {
   const { page, limit, skip } = parsePage(req.query);
@@ -21,6 +24,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     const rx = new RegExp(escapeRegex(String(req.query.q).slice(0, 80)), 'i');
     filter.$or = [{ name: rx }, { email: rx }, { studentId: rx }];
   }
+  Object.assign(filter, scopeOf(req));
   const sort = parseSort(req.query, ['name', 'email', 'role', 'createdAt', 'lastLoginAt'], { createdAt: -1 });
 
   const [items, total] = await Promise.all([
@@ -42,7 +46,7 @@ export const listUsers = asyncHandler(async (req, res) => {
 
 export const getUser = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id).populate('department', 'name code').populate('term', 'name').populate('batch', 'name');
+  const user = await User.findOne({ _id: req.params.id, ...scopeOf(req) }).populate('department', 'name code').populate('term', 'name').populate('batch', 'name');
   if (!user) throw new AppError('User not found', 404);
   const extra = {};
   if (user.role === 'student') {
@@ -56,8 +60,9 @@ export const getUser = asyncHandler(async (req, res) => {
 
 /** Coordinator creates accounts for every role (this is how privileged users are onboarded). */
 export const createUser = asyncHandler(async (req, res) => {
-  const { name, email, role, departmentId, termId, batchId, studentId, phone, designation, maxProjects, password } = req.body;
-  if (!CREATABLE_ROLES.includes(role)) throw new AppError('Choose student, supervisor or coordinator. External evaluators are created from External Evaluators.', 422, { role: 'Invalid role' });
+  const { name, email, role, termId, batchId, studentId, phone, designation, maxProjects, password } = req.body;
+  const departmentId = req.deptScope ? String(req.deptScope) : req.body.departmentId; // a department coordinator can only add to their own department
+  if (!CREATABLE_ROLES.includes(role)) throw new AppError('Choose student or supervisor. Coordinators are invited by email; external evaluators are created from External Evaluators.', 422, { role: 'Invalid role' });
   if ((await User.exists({ email })) || (await PlatformAdmin.exists({ email }))) throw new AppError('A user with this email already exists', 409, { email: 'Already in use' });
   if (role === 'student') {
     if (!studentId) throw new AppError('Student ID is required for students', 422, { studentId: 'Required' });
@@ -99,7 +104,7 @@ export const createUser = asyncHandler(async (req, res) => {
 
 export const updateUser = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id);
+  const user = await User.findOne({ _id: req.params.id, ...scopeOf(req) });
   if (!user) throw new AppError('User not found', 404);
   if (user.deletedAt) throw new AppError('This account was deleted by its owner.', 409);
   const { name, phone, departmentId, studentId, designation, maxProjects, termId, batchId } = req.body;
@@ -136,7 +141,7 @@ export const updateUser = asyncHandler(async (req, res) => {
 /** Activate / deactivate. Records are never deleted, so academic history is preserved. */
 export const setUserStatus = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id);
+  const user = await User.findOne({ _id: req.params.id, ...scopeOf(req) });
   if (!user) throw new AppError('User not found', 404);
   if (user.deletedAt) throw new AppError('This account was deleted by its owner and cannot be reactivated.', 409);
   if (sameId(user._id, req.user._id)) throw new AppError('You cannot deactivate your own account', 409);
@@ -155,7 +160,7 @@ export const setUserStatus = asyncHandler(async (req, res) => {
 
 export const resetUserPassword = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id);
+  const user = await User.findOne({ _id: req.params.id, ...scopeOf(req) });
   if (!user) throw new AppError('User not found', 404);
   if (user.deletedAt) throw new AppError('This account was deleted by its owner.', 409);
   const temporaryPassword = generateTempPassword();
@@ -179,7 +184,7 @@ export const lookupStudent = asyncHandler(async (req, res) => {
 /** Coordinator approves or rejects a supervisor sign-up. */
 export const decideApproval = asyncHandler(async (req, res) => {
   if (!isId(req.params.id)) throw new AppError('User not found', 404);
-  const user = await User.findById(req.params.id);
+  const user = await User.findOne({ _id: req.params.id, ...scopeOf(req) });
   if (!user) throw new AppError('User not found', 404);
   if (user.approvalStatus !== 'pending') throw new AppError('This request has already been decided', 409);
   const approve = req.body.decision === 'approve';

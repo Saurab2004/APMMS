@@ -1,6 +1,6 @@
 // Batch and term rules in one place.
 // A student belongs to one batch; the batch points at the term it is working in; groups and projects follow that term.
-import { AcademicTerm, Batch } from '../models/index.js';
+import { AcademicTerm, Batch, User, ProjectGroup, Project } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 
 /** The batch and term a student's new group goes into. Throws a clear message when something is not set up. */
@@ -24,4 +24,33 @@ export async function batchAndTermFor(user) {
 export function syncStudentTerm(user, batch) {
   user.batch = batch?._id;
   if (batch?.term) user.term = batch.term;
+}
+
+const FINISHED = ['evaluated', 'completed', 'archived'];
+
+/** Puts a whole batch into a term: its students follow and (optionally) its unfinished groups and projects too. */
+export async function moveBatchToTerm(batch, term, moveGroups = true) {
+  const from = batch.term;
+  batch.term = term._id;
+  await batch.save();
+  await User.updateMany({ batch: batch._id, role: 'student' }, { $set: { term: term._id } });
+  let moved = 0;
+  let skipped = 0;
+  if (moveGroups && String(from) !== String(term._id)) {
+    const projects = await Project.find({ batch: batch._id, status: { $nin: FINISHED } }).select('group').lean();
+    for (const p of projects) {
+      const group = await ProjectGroup.findById(p.group);
+      if (!group || group.status !== 'active') continue;
+      try {
+        group.term = term._id;
+        await group.save();
+        await Project.updateOne({ _id: p._id }, { $set: { term: term._id } });
+        moved += 1;
+      } catch (err) {
+        if (err.code === 11000) skipped += 1; // another group in that term already has the same name
+        else throw err;
+      }
+    }
+  }
+  return { moved, skipped };
 }

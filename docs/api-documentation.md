@@ -156,7 +156,7 @@ Every request of a logged-in user is automatically limited to that user's instit
 | Method & path | Who | Notes |
 |---|---|---|
 | GET `/auth/registration-options` | public | `{ institutions: [{_id,name,type,allowSelfRegistration,departments[]}], platform: {allowInstitutionRegistration, notice} }` - approved institutions only |
-| POST `/auth/register` | public | Student/Supervisor: `institutionId` + `departmentId` required. Coordinator: `institutionName`, optional `institutionType`, `departmentName`; creates an institution that **activates itself when the coordinator verifies the email** (403 when the platform admin switched new-institution sign-up off). |
+| POST `/auth/register` | public | Student/Supervisor: `institutionId` + `departmentId` required. `facultyId` required and must match the department's faculty. **Role `coordinator` is refused (422)**: coordinators are invited by the platform admin. |
 | POST `/institutions/mine/delete` `{password, confirmName, eraseNow?}` | coordinator | Deletes the caller's institution. 422 wrong password/name |
 
 Login and every request return 403 with code `INSTITUTION_PENDING`, `INSTITUTION_BLOCKED` (suspended) or `INSTITUTION_DELETED` when the institution is not usable.
@@ -204,7 +204,7 @@ Connects to the same origin and uses the same cookie. Rooms: `user:<id>` (notifi
 
 ## Highlights added in this version
 - `POST /auth/login` takes `{email, password, role}`. If `role` does not match the account the server answers 403 with a friendly message (only after the password is correct).
-- `POST /auth/register` takes `role`: `student` (active at once), `supervisor` (saved as *pending*; response `{pending:true}`), `coordinator` (only while no coordinator exists and `setupCode` equals `COORDINATOR_SETUP_CODE` in `server/.env`).
+- `POST /auth/register` takes `role`: `student` (active after email verification; pending approval when the institution's *require student approval* setting is on, which is on for admin-created institutions) or `supervisor` (pending until the department coordinator approves).
 - `GET /users?approval=pending` and `POST /users/:id/approval {decision:'approve'|'reject', note}` - coordinator decides supervisor requests.
 - `GET /proposals/project/:projectId/similar` - similar-project check (students see title/term/score only).
 - `GET /calendar?from=&to=` - milestones, meetings, report deadlines and term deadlines the caller may see (max 100 days).
@@ -213,3 +213,17 @@ Connects to the same origin and uses the same cookie. Rooms: `user:<id>` (notifi
 
 ## Not implemented
 - Email delivery (password-reset links are printed to the server console).
+
+
+## Faculties, invitations and department coordinators
+| Endpoint | Notes |
+|---|---|
+| POST `/platform/institutions` | `institutionName`, optional `coordinatorName`+`coordinatorEmail` (institution-level). Returns `{institution, coordinator, emailed, link}`; `link` only when the email was not sent |
+| GET `/platform/institutions/:id/structure` | faculties, departments (each with its `coordinator`), institution coordinators |
+| POST `/platform/institutions/:id/faculties`, PATCH `/platform/faculties/:id` | faculty CRUD |
+| POST `/platform/institutions/:id/departments`, PATCH `/platform/departments/:id` | `facultyId` required |
+| POST `/platform/institutions/:id/coordinators` | `{name,email,level:'department'|'institution',departmentId}`; 409 if the department already has an active coordinator or the email is used |
+| POST `/platform/coordinators/:id/action` | `reset-password` and `resend-invitation` email a 7-day set-password link; no password is ever shown |
+| GET/POST/PATCH `/faculties`, `/departments` | institution-level coordinators (department coordinators get 403 on changes) |
+| POST/PATCH `/academic-terms` | optional `batchIds`: links active batches and moves their students and unfinished groups; response has `linked` |
+| GET `...?disposition=inline` on file routes | PDF/PNG/JPG are returned inline for the viewer |

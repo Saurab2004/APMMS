@@ -47,7 +47,7 @@ const GUIDE = {
     ],
     faq: [
       ['Can there be two coordinators?', 'Yes. Create more coordinator accounts for your institution on the Users page if needed.'],
-      ['Can I delete my institution?', 'Yes, from Profile & account > Delete my institution (password and the institution name are required). Everyone is blocked at once and the data is erased for good after a grace period, unless you choose to erase it immediately.'],
+      ['How do coordinators get an account?', 'The APMMS administrator adds your institution and invites each department coordinator by email. Open the link in the email and choose your own password. Coordinators cannot sign up on their own.'],
       ['What if the coordinator forgets the password?', 'Use "Forgot password?" on the login page. If email is not set up, the reset link is shown in the server window of whoever runs the server.'],
     ],
   },

@@ -82,7 +82,7 @@ test('adding admins: temporary password, forced change, deactivate / reactivate,
   assert.equal((await second.get('/api/platform/overview')).status, 200, 'works after the change, same browser stays logged in');
 
   // a normal sign-up cannot reuse an admin's email (the forgot-password link would be ambiguous)
-  const reg = await anon().post('/api/auth/register', { name: 'Sneaky', email: 'second@site.test', password: PW, role: 'student', studentId: 'X-1', institutionId: (await Institution.findOne({ nameKey: 'demo university' }))._id, departmentId: (await (await import('../models/index.js')).Department.findOne({}))._id, batchId: (await (await import('../models/index.js')).Batch.findOne({}))._id });
+  const reg = await anon().post('/api/auth/register', { name: 'Sneaky', email: 'second@site.test', password: PW, role: 'student', studentId: 'X-1', institutionId: (await Institution.findOne({ nameKey: 'demo university' }))._id, facultyId: (await (await import('../models/index.js')).Department.findOne({})).faculty, departmentId: (await (await import('../models/index.js')).Department.findOne({}))._id, batchId: (await (await import('../models/index.js')).Batch.findOne({}))._id });
   assert.equal(reg.status, 409);
 
   const list = (await S.founder.get('/api/platform/admins')).body.data;
@@ -125,86 +125,84 @@ test('overview and institution list show counts, never student work', async () =
   assert.equal((await S.founder.get('/api/platform/institutions/not-an-id')).status, 404);
 });
 
-test('admin creates an institution + coordinator; coordinator help actions', async () => {
+test('admin adds an institution, faculty, departments and invites coordinators; coordinator help actions', async () => {
   const bad = await S.founder.post('/api/platform/institutions', { institutionName: 'Demo University', coordinatorName: 'X Y', coordinatorEmail: 'x@y.test' });
   assert.equal(bad.status, 409);
   const r = await S.founder.post('/api/platform/institutions', { institutionName: 'Delta Academy', institutionType: 'school', coordinatorName: 'Dee Delta', coordinatorEmail: 'dee@delta.test' });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   S.delta = r.body.data.institution._id;
   assert.equal(r.body.data.institution.status, 'approved');
-  const dee = anon();
-  const login = await dee.post('/api/auth/login', { email: 'dee@delta.test', password: r.body.data.tempPassword, role: 'coordinator' });
-  assert.equal(login.status, 200, JSON.stringify(login.body));
-  assert.equal(login.body.data.user.mustChangePassword, true);
-  assert.equal((await dee.get('/api/platform/overview')).status, 401, 'a coordinator the admin created is still only a coordinator');
+  assert.equal(r.body.data.tempPassword, undefined);
   const coordId = r.body.data.coordinator._id;
+  const setPw = async (email, password) => assert.equal((await anon().post('/api/auth/reset-password', { token: latestToken(email), password })).status, 200);
 
-  // reset password: sessions die, new temp password works
+  // before the link is used there is no way in; the admin can send a fresh link
+  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: PW, role: 'coordinator' })).status, 401);
+  assert.equal((await S.founder.get('/api/platform/coordinators?state=unverified')).body.data.some((c) => c.email === 'dee@delta.test'), true, 'an invited coordinator counts as waiting');
+  assert.equal((await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'resend-invitation' })).status, 200);
+  await setPw('dee@delta.test', PW);
+  const dee = anon();
+  const login = await dee.post('/api/auth/login', { email: 'dee@delta.test', password: PW, role: 'coordinator' });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  assert.equal(login.body.data.user.mustChangePassword, false, 'they chose the password themselves');
+  assert.equal((await dee.get('/api/platform/overview')).status, 401, 'a coordinator is still only a coordinator');
+
+  // faculties, departments and one coordinator per department
+  const fac = (await S.founder.post(`/api/platform/institutions/${S.delta}/faculties`, { name: 'Faculty of Science' })).body.data;
+  const d1 = (await S.founder.post(`/api/platform/institutions/${S.delta}/departments`, { name: 'Physics', code: 'PHY', facultyId: fac._id })).body.data;
+  const d2 = (await S.founder.post(`/api/platform/institutions/${S.delta}/departments`, { name: 'Chemistry', code: 'CHM', facultyId: fac._id })).body.data;
+  const inv = await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'Pia Physics', email: 'pia@delta.test', level: 'department', departmentId: d1._id });
+  assert.equal(inv.status, 201, JSON.stringify(inv.body));
+  assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'Second', email: 'second@delta.test', level: 'department', departmentId: d1._id })).status, 409, 'one coordinator per department');
+  assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'Dup', email: 'pia@delta.test', level: 'department', departmentId: d2._id })).status, 409, 'email already used');
+  assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'No Dept', email: 'nodept@delta.test', level: 'department' })).status, 422);
+  const st = (await S.founder.get(`/api/platform/institutions/${S.delta}/structure`)).body.data;
+  assert.equal(st.faculties.length, 1);
+  assert.equal(st.departments.find((d) => d._id === d1._id).coordinator.email, 'pia@delta.test');
+  assert.equal(st.departments.find((d) => d._id === d2._id).coordinator, null);
+  assert.equal(st.institutionCoordinators.length, 1);
+  // a deactivated department coordinator frees the department for a new one
+  assert.equal((await S.founder.post(`/api/platform/coordinators/${inv.body.data.coordinator._id}/action`, { action: 'deactivate' })).status, 200);
+  assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'Pat Physics', email: 'pat@delta.test', level: 'department', departmentId: d1._id })).status, 201);
+
+  // reset password: no password is shown; a link is emailed, sessions die
   const rp = await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'reset-password' });
   assert.equal(rp.status, 200);
+  assert.equal(rp.body.data.tempPassword, undefined);
   assert.equal((await dee.get('/api/auth/me')).status, 401, 'old session ended');
-  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: rp.body.data.tempPassword, role: 'coordinator' })).status, 200);
+  await setPw('dee@delta.test', 'Reset-Pass-77');
   // deactivate / reactivate
-  const dee2 = await loggedIn('dee@delta.test', 'coordinator', rp.body.data.tempPassword);
+  const dee2 = await loggedIn('dee@delta.test', 'coordinator', 'Reset-Pass-77');
   assert.equal((await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'deactivate' })).status, 200);
   assert.equal((await dee2.get('/api/auth/me')).status, 401);
-  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: rp.body.data.tempPassword, role: 'coordinator' })).status, 403);
+  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: 'Reset-Pass-77', role: 'coordinator' })).status, 403);
   assert.equal((await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'reactivate' })).status, 200);
-  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: rp.body.data.tempPassword, role: 'coordinator' })).status, 200);
+  assert.equal((await anon().post('/api/auth/login', { email: 'dee@delta.test', password: 'Reset-Pass-77', role: 'coordinator' })).status, 200);
   // only coordinators can be targeted
   const alice = await User.findOne({ email: 'alice@apmms.test' });
   assert.equal((await S.founder.post(`/api/platform/coordinators/${alice._id}/action`, { action: 'deactivate' })).status, 404);
   assert.equal((await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'explode' })).status, 422);
-
-  // a coordinator who never verified: resend, or the admin vouches for the email (this activates the institution)
-  const reg = await anon().post('/api/auth/register', { name: 'Eve Epsilon', email: 'eve@eps.test', password: PW, role: 'coordinator', institutionName: 'Epsilon College' });
-  assert.equal(reg.status, 201);
-  const un = (await S.founder.get('/api/platform/coordinators?state=unverified')).body.data;
-  const eve = un.find((c) => c.email === 'eve@eps.test');
-  assert.ok(eve);
-  assert.equal(eve.institution.name, 'Epsilon College');
-  assert.equal((await S.founder.post(`/api/platform/coordinators/${eve._id}/action`, { action: 'resend-verification' })).status, 200);
-  const v = await S.founder.post(`/api/platform/coordinators/${eve._id}/action`, { action: 'verify-email' });
-  assert.equal(v.status, 200);
-  assert.equal(v.body.data.activated, true);
-  assert.equal((await anon().post('/api/auth/login', { email: 'eve@eps.test', password: PW, role: 'coordinator' })).status, 200);
-  assert.equal((await S.founder.get('/api/platform/coordinators?q=eve')).body.data.length, 1);
+  assert.equal((await S.founder.get('/api/platform/coordinators?q=dee')).body.data.length, 1);
 });
 
 test('admin can rename an institution, suspend it (people blocked) and restore it', async () => {
   assert.equal((await S.founder.patch(`/api/platform/institutions/${S.delta}`, { name: 'Demo University' })).status, 409);
   assert.equal((await S.founder.patch(`/api/platform/institutions/${S.delta}`, { name: 'Delta Public School', type: 'school' })).status, 200);
-  const dee = await loggedIn('dee@delta.test', 'coordinator', (await resetFor('dee@delta.test')));
+  const dee = await loggedIn('dee@delta.test', 'coordinator', 'Reset-Pass-77');
   assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/decision`, { decision: 'suspend', note: 'Unpaid' })).status, 200);
   assert.equal((await dee.get('/api/auth/me')).status, 403);
   assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/decision`, { decision: 'reactivate' })).status, 200);
   assert.equal((await dee.get('/api/auth/me')).status, 200);
 });
-async function resetFor(email) {
-  const u = await User.findOne({ email });
-  const c = (await import('../models/index.js'));
-  const pw = 'Reset-Pass-77';
-  await u.setPassword(pw);
-  u.mustChangePassword = false;
-  await u.save();
-  void c;
-  return pw;
-}
-
-test('platform settings: switch off new institution sign-up, login notice', async () => {
-  assert.equal((await S.founder.get('/api/platform/settings')).body.data.allowInstitutionRegistration, true);
-  const put = await S.founder.put('/api/platform/settings', { allowInstitutionRegistration: false, loginNotice: 'Maintenance on Sunday' });
+test('platform settings: login notice', async () => {
+  const put = await S.founder.put('/api/platform/settings', { loginNotice: 'Maintenance on Sunday' });
   assert.equal(put.status, 200);
   const o = (await anon().get('/api/auth/registration-options')).body.data;
-  assert.equal(o.platform.allowInstitutionRegistration, false);
   assert.equal(o.platform.notice, 'Maintenance on Sunday');
-  const r = await anon().post('/api/auth/register', { name: 'Late Comer', email: 'late@x.test', password: PW, role: 'coordinator', institutionName: 'Late College' });
-  assert.equal(r.status, 403);
   // students and supervisors can still join existing institutions
   const demo = o.institutions.find((i) => i.name === 'Demo University');
-  assert.equal((await anon().post('/api/auth/register', { name: 'Still Ok', email: 'stillok@x.test', password: PW, role: 'student', studentId: 'OK-1', institutionId: demo._id, departmentId: demo.departments[0]._id, batchId: demo.departments[0].batches[0]?._id })).status, 201);
-  await S.founder.put('/api/platform/settings', { allowInstitutionRegistration: true, loginNotice: '' });
-  assert.equal((await anon().get('/api/auth/registration-options')).body.data.platform.allowInstitutionRegistration, true);
+  assert.equal((await anon().post('/api/auth/register', { name: 'Still Ok', email: 'stillok@x.test', password: PW, role: 'student', studentId: 'OK-1', institutionId: demo._id, facultyId: demo.departments[0].faculty, departmentId: demo.departments[0]._id, batchId: demo.departments[0].batches[0]?._id })).status, 201);
+  await S.founder.put('/api/platform/settings', { loginNotice: '' });
 });
 
 test('platform audit log records admin actions; health has no secrets', async () => {

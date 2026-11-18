@@ -28,7 +28,11 @@ export async function loadProjectAccess(user, projectId) {
   const group = await ProjectGroup.findById(project.group);
 
   let access = null;
-  if (user.role === 'coordinator') access = 'coordinator';
+  if (user.role === 'coordinator') {
+    // A department coordinator only works with projects of their own department.
+    if (user.coordinatorLevel === 'department' && String(project.department) !== String(user.department)) throw new AppError('Project not found', 404);
+    access = 'coordinator';
+  }
   else if (user.role === 'supervisor' && sameId(project.supervisor, user._id)) access = 'supervisor';
   else if (user.role === 'student' && group) {
     const m = group.activeMember(user._id);
@@ -57,7 +61,7 @@ export function requireReviewer(access) {
  * Project ids the user may see. `null` means "all projects" (coordinator).
  */
 export async function scopedProjectIds(user) {
-  if (user.role === 'coordinator') return null;
+  if (user.role === 'coordinator') return user.coordinatorLevel === 'department' ? Project.find({ department: user.department }).distinct('_id') : null;
   if (user.role === 'supervisor') return Project.find({ supervisor: user._id }).distinct('_id');
   if (user.role === 'student') {
     const groupIds = await ProjectGroup.find({

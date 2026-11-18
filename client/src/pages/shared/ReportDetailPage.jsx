@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Check, Download, RotateCcw, Send, Upload, X, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Check, Download, RotateCcw, Send, Upload, X, PlayCircle, Eye } from 'lucide-react';
 import { Alert, Badge, Button, Card, CardBody, CardHead, KV, Loading, ErrorState, PageHeader, StatusBadge } from '../../components/common/ui.jsx';
 import { Field, FileInput, TextArea } from '../../components/forms/fields.jsx';
 import { ConfirmDialog } from '../../components/common/Modal.jsx';
+import { FileChip, FileViewerDialog, canView } from '../../components/files/FileViewer.jsx';
 import DocumentPreview from '../../components/reports/DocumentPreview.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -102,6 +103,7 @@ export default function ReportDetailPage({ backTo }) {
   const toast = useToast();
   const state = useAsync(() => get(`/reports/${id}`), [id]);
   const [ver, setVer] = useState(null);
+  const [viewing, setViewing] = useState(null);
   if (state.loading && !state.data) return <Loading />;
   if (state.error && !state.data) return <ErrorState message={state.error} onRetry={state.reload} />;
   const { report, versions, reviews, project, group, access, canReview, canResubmit, canEditDraft } = state.data;
@@ -133,10 +135,7 @@ export default function ReportDetailPage({ backTo }) {
               {current?.note && <Alert tone="info"><strong>Student note:</strong> {current.note}</Alert>}
               {current?.attachments?.length > 0 && (
                 <div className="stack-sm"><strong className="small">Supporting attachments</strong>
-                  {current.attachments.map((a, i) => (
-                    <div className="file-chip" key={i}><span className="name">{a.originalName}</span>
-                      <Button variant="secondary" size="sm" icon={Download} onClick={() => downloadFile(`/reports/${report._id}/versions/${current.version}/attachments/${i}`, a.originalName).catch((e) => toast.error(errMsg(e)))}>Download</Button></div>
-                  ))}
+                  {current.attachments.map((a, i) => <FileChip key={i} file={a} url={`/reports/${report._id}/versions/${current.version}/attachments/${i}`} />)}
                 </div>
               )}
             </CardBody>
@@ -163,7 +162,8 @@ export default function ReportDetailPage({ backTo }) {
           <Card><CardHead title="Versions" /><CardBody>
             <ul className="list">{versions.map((v) => (
               <li key={v.version} className="row between"><span><strong>v{v.version}</strong> <span className="muted small">{fmtDateTime(v.submittedAt || v.createdAt)}{v.isLate ? ' - late' : ''}</span></span>
-                {v.file && <Button variant="ghost" size="sm" icon={Download} aria-label={`Download version ${v.version}`} onClick={() => downloadFile(fileUrl(v), v.file.originalName).catch((e) => toast.error(errMsg(e)))} />}</li>))}</ul>
+                {v.file && <span className="row" style={{ gap: 2 }}>{canView(v.file) && <Button variant="ghost" size="sm" icon={Eye} aria-label={`View version ${v.version}`} onClick={() => setViewing(v)} />}<Button variant="ghost" size="sm" icon={Download} aria-label={`Download version ${v.version}`} onClick={() => downloadFile(fileUrl(v), v.file.originalName).catch((e) => toast.error(errMsg(e)))} /></span>}</li>))}</ul>
+            {viewing && <FileViewerDialog url={fileUrl(viewing)} file={viewing.file} onClose={() => setViewing(null)} />}
           </CardBody></Card>
         </div>
       </div>

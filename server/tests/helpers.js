@@ -117,3 +117,20 @@ export function form(fields = {}, files = {}) {
   for (const [k, v] of Object.entries(files)) f.append(k, v.blob, v.name);
   return f;
 }
+
+/**
+ * Creates an institution the way the platform does it now: the admin adds the institution, a faculty, departments and
+ * invites the coordinator by email; the coordinator opens the emailed link and chooses a password.
+ */
+export async function createInstitutionViaAdmin(admin, { name, type = 'college', coordinator, faculty = 'Main Faculty', departments = [{ name: 'Computer Science & Engineering', code: 'CSE' }], password = 'Passw0rd1' }) {
+  const r = await admin.post('/api/platform/institutions', { institutionName: name, institutionType: type, coordinatorName: coordinator.name, coordinatorEmail: coordinator.email });
+  if (r.status !== 201) throw new Error(`institution not created: ${JSON.stringify(r.body)}`);
+  const instId = r.body.data.institution._id;
+  const f = await admin.post(`/api/platform/institutions/${instId}/faculties`, { name: faculty });
+  const facultyId = f.body.data._id;
+  const departmentIds = [];
+  for (const d of departments) departmentIds.push((await admin.post(`/api/platform/institutions/${instId}/departments`, { ...d, facultyId })).body.data._id);
+  const set = await new Client().post('/api/auth/reset-password', { token: latestToken(coordinator.email), password });
+  if (set.status !== 200) throw new Error(`coordinator could not set a password: ${JSON.stringify(set.body)}`);
+  return { instId, facultyId, departmentIds };
+}

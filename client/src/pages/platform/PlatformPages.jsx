@@ -10,7 +10,8 @@ import { useForm } from '../../hooks/useForm.js';
 import { useToast } from '../../context/ToastContext.jsx';
 import { downloadFile, errMsg, get, patch, post } from '../../services/api.js';
 import { fmtDate, fmtDateTime, timeAgo } from '../../utils/format.js';
-import { ACTIONS_FOR, CoordinatorActions, CoordinatorBadges, DECISIONS, DecisionDialog, STATUS_LABEL, STATUS_TONE, TYPE, TempPasswordDialog } from './platformShared.jsx';
+import { ACTIONS_FOR, CoordinatorActions, CoordinatorBadges, DECISIONS, DecisionDialog, InviteLinkDialog, STATUS_LABEL, STATUS_TONE, TYPE } from './platformShared.jsx';
+import InstitutionStructure from './InstitutionStructure.jsx';
 
 const StatusBadgeP = ({ status }) => <Badge tone={STATUS_TONE[status]}>{STATUS_LABEL[status] || status}</Badge>;
 const peopleText = (c) => `${c.students} students, ${c.supervisors} supervisors`;
@@ -68,17 +69,17 @@ function AddInstitutionDialog({ onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
-    try { onCreated(await post('/platform/institutions', { ...f.values, institutionName: f.values.institutionName.trim(), coordinatorName: f.values.coordinatorName.trim(), coordinatorEmail: f.values.coordinatorEmail.trim() })); }
+    try { const b = { institutionName: f.values.institutionName.trim(), institutionType: f.values.institutionType }; if (f.values.coordinatorEmail.trim()) { b.coordinatorName = f.values.coordinatorName.trim(); b.coordinatorEmail = f.values.coordinatorEmail.trim(); } onCreated(await post('/platform/institutions', b)); }
     catch (err) { f.applyError(err); toast.error(errMsg(err)); } finally { setBusy(false); }
   };
   return (
     <Modal title="Add an institution" onClose={onClose} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" form="add-inst" loading={busy}>Create</Button></>}>
       <form id="add-inst" className="stack" onSubmit={submit}>
-        <p className="muted" style={{ margin: 0 }}>Creates an active institution and its first coordinator. You get a one-time temporary password for the coordinator (it is also emailed when email is configured).</p>
+        <p className="muted" style={{ margin: 0 }}>Creates the institution. Afterwards you add its faculties and departments and invite one coordinator per department. Optionally invite an institution-level coordinator now: they get an email with a link to set their own password.</p>
         <Field label="Institution name" required error={f.errors.institutionName}><Input {...f.bind('institutionName')} required /></Field>
         <Field label="Type"><Select {...f.bind('institutionType')}>{Object.entries(TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
-        <Field label="Coordinator name" required error={f.errors.coordinatorName}><Input {...f.bind('coordinatorName')} required /></Field>
-        <Field label="Coordinator email" required error={f.errors.coordinatorEmail}><Input type="email" {...f.bind('coordinatorEmail')} required /></Field>
+        <Field label="Institution coordinator name (optional)" error={f.errors.coordinatorName}><Input {...f.bind('coordinatorName')} /></Field>
+        <Field label="Institution coordinator email (optional)" error={f.errors.coordinatorEmail}><Input type="email" {...f.bind('coordinatorEmail')} /></Field>
       </form>
     </Modal>
   );
@@ -105,7 +106,7 @@ export function PlatformInstitutions() {
   ];
   return (
     <>
-      <PageHeader title="Institutions" subtitle="Every university, college or school is its own separate workspace. New ones activate themselves when their coordinator verifies their email; you can suspend, restore or erase any of them."
+      <PageHeader title="Institutions" subtitle="Every university, college or school is its own separate workspace. Only you can add institutions and invite their coordinators, so nobody unwanted can use the system. You can suspend, restore or erase any of them."
         actions={<><Button variant="secondary" icon={Download} onClick={() => downloadFile(`/platform/institutions/export.csv${status ? `?status=${status}` : ''}`, 'institutions.csv').catch((e) => toast.error(errMsg(e)))}>Export CSV</Button><Button icon={Plus} onClick={() => setAdding(true)}>Add institution</Button></>} />
       <Card className="mb"><CardBody className="row wrap">
         <div style={{ position: 'relative', minWidth: 220, flex: '1 1 220px' }}>
@@ -117,9 +118,11 @@ export function PlatformInstitutions() {
         </Select>
       </CardBody></Card>
       <DataTable columns={columns} rows={list.data} loading={list.loading} error={list.error} onRetry={list.reload} minWidth={760}
-        empty={<EmptyState icon={Building2} title="No institutions here">Institutions appear when a coordinator registers one, or when you add one.</EmptyState>} />
+        empty={<EmptyState icon={Building2} title="No institutions here">Add an institution to get started.</EmptyState>} />
       {adding && <AddInstitutionDialog onClose={() => setAdding(false)} onCreated={(r) => { setAdding(false); setCreated(r); list.reload(); }} />}
-      {created && <TempPasswordDialog title={`${created.institution.name} created`} email={created.coordinator.email} password={created.tempPassword} emailed={created.emailed} onClose={() => { const id = created.institution._id; setCreated(null); navigate(`/platform/institutions/${id}`); }} />}
+      {created && (created.coordinator
+        ? <InviteLinkDialog title={`${created.institution.name} created`} email={created.coordinator.email} emailed={created.emailed} link={created.link} onClose={() => { const id = created.institution._id; setCreated(null); navigate(`/platform/institutions/${id}`); }} />
+        : (() => { const id = created.institution._id; setTimeout(() => { setCreated(null); navigate(`/platform/institutions/${id}`); }, 0); return null; })())}
     </>
   );
 }
@@ -154,25 +157,14 @@ export function PlatformInstitutionDetail() {
         </>} />
       <div className="row mb"><StatusBadgeP status={i.status} />{i.statusNote && <span className="muted small">Note: {i.statusNote}</span>}</div>
       {i.status === 'deleted' && i.purgeAt && <Alert tone="warning" className="mb">Deleted by its coordinator. Everything is erased for good on <strong>{fmtDate(i.purgeAt)}</strong> unless you restore it.</Alert>}
-      {i.status === 'pending' && <Alert tone="info" className="mb">Waiting for the coordinator to verify their email; it then activates by itself. If they cannot receive the email, use <em>Mark verified</em> below, or <em>Activate</em> above.</Alert>}
       <div className="grid mb" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
         <StatCard label="Students" value={i.counts.students} /><StatCard label="Supervisors" value={i.counts.supervisors} hint={i.counts.pendingSupervisors ? `${i.counts.pendingSupervisors} waiting for approval` : undefined} />
         <StatCard label="Groups" value={i.counts.groups} /><StatCard label="Projects" value={i.counts.projects} /><StatCard label="Departments" value={i.counts.departments} />
       </div>
-      <div className="grid cols-2" style={{ alignItems: 'start' }}>
+      <div className="grid" style={{ alignItems: 'start' }}>
         <Card><CardHead title="Details" /><CardBody><KV items={[['Name', i.name], ['Type', TYPE[i.type] || i.type], ['Status', STATUS_LABEL[i.status] || i.status], ['Registered', fmtDateTime(i.createdAt)], ['Last login by anyone', i.lastActivityAt ? `${fmtDateTime(i.lastActivityAt)} (${timeAgo(i.lastActivityAt)})` : 'Never'], i.decidedAt && ['Last status change', fmtDateTime(i.decidedAt)]]} /></CardBody></Card>
-        <Card><CardHead title="Coordinators" /><CardBody>
-          {!i.coordinators.length ? <p className="muted small" style={{ margin: 0 }}>No coordinator accounts.</p> : (
-            <ul className="list">{i.coordinators.map((c) => (
-              <li key={c._id} className="stack" style={{ gap: 4 }}>
-                <div><strong>{c.name}</strong> <CoordinatorBadges c={c} /></div>
-                <div className="muted small">{c.email} - last login {c.lastLoginAt ? timeAgo(c.lastLoginAt) : 'never'}</div>
-                <CoordinatorActions c={c} onDone={state.reload} />
-              </li>))}
-            </ul>
-          )}
-        </CardBody></Card>
       </div>
+      <div className="mt"><InstitutionStructure instId={id} onChanged={state.reload} /></div>
       {dlg && <DecisionDialog inst={i} decision={dlg} onClose={() => setDlg(null)} onDone={(d) => { setDlg(null); if (d === 'purge') navigate('/platform/institutions'); else state.reload(); }} />}
       {editing && (
         <Modal title="Rename institution" onClose={() => setEditing(false)} footer={<><Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button><Button type="submit" form="edit-inst" loading={busy}>Save</Button></>}>

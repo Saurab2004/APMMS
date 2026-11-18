@@ -3,8 +3,21 @@ import mongoose from 'mongoose';
 
 const { Schema } = mongoose;
 
+// A faculty groups departments inside one institution (for example "Faculty of Science and Technology").
+const facultySchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true, maxlength: 120 },
+    code: { type: String, trim: true, uppercase: true, maxlength: 12 },
+    description: { type: String, trim: true, maxlength: 500 },
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+facultySchema.index({ institution: 1, name: 1 }, { unique: true });
+
 const departmentSchema = new Schema(
   {
+    faculty: { type: Schema.Types.ObjectId, ref: 'Faculty', index: true },
     name: { type: String, required: true, trim: true, maxlength: 120 },
     code: { type: String, required: true, trim: true, uppercase: true, maxlength: 12 },
     description: { type: String, trim: true, maxlength: 500 },
@@ -52,5 +65,6 @@ departmentSchema.index({ institution: 1, code: 1 }, { unique: true });
 termSchema.index({ institution: 1, name: 1 }, { unique: true });
 
 export const Department = mongoose.models.Department || mongoose.model('Department', departmentSchema);
+export const Faculty = mongoose.models.Faculty || mongoose.model('Faculty', facultySchema);
 export const Batch = mongoose.models.Batch || mongoose.model('Batch', batchSchema);
 export const AcademicTerm = mongoose.models.AcademicTerm || mongoose.model('AcademicTerm', termSchema);

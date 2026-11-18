@@ -14,6 +14,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { api, del, downloadFile, errMsg, get, post, put } from '../../services/api.js';
 import { fmtDate, fmtDateTime, titleCase } from '../../utils/format.js';
+import { FileChip, FileViewerDialog, canView } from '../../components/files/FileViewer.jsx';
 import Hint from '../../components/onboarding/Hint.jsx';
 
 const FIELDS = [
@@ -29,8 +30,7 @@ function VersionContent({ v, projectId }) {
       {FIELDS.map(([k, label]) => v[k] ? <div key={k}><div className="label small muted">{label}</div><div className="pre-wrap">{v[k]}</div></div> : null)}
       {v.technologyStack?.length > 0 && <div><div className="label small muted">Technology stack</div><div className="row" style={{ gap: 6 }}>{v.technologyStack.map((t) => <Badge key={t} tone="info">{t}</Badge>)}</div></div>}
       {v.attachments?.length > 0 && <div className="stack-sm"><div className="label small muted">Supporting documents</div>
-        {v.attachments.map((a, i) => <div key={i} className="file-chip"><span className="name">{a.originalName}</span>
-          <Button variant="secondary" size="sm" icon={Download} onClick={() => downloadFile(`/proposals/project/${projectId}/versions/${v.version}/attachments/${i}`, a.originalName).catch((e) => toast.error(errMsg(e)))}>Download</Button></div>)}</div>}
+        {v.attachments.map((a, i) => <FileChip key={i} file={a} url={`/proposals/project/${projectId}/versions/${v.version}/attachments/${i}`} />)}</div>}
     </div>
   );
 }

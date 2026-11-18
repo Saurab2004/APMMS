@@ -2,7 +2,7 @@
 
 A MERN (MongoDB, Express, React, Node.js) web app for managing final-year student projects: groups, proposals, progress and final reports with file versions, milestones, meetings, feedback, real-time chat, notifications, rubric-based evaluation (supervisor and external), analytics and audit logs. JavaScript only; no paid services.
 
-**One login page for everyone:** pick Student, Supervisor or Coordinator, then log in. Sign-up works the same way: you choose your **institution** and department; students verify their email, supervisors also wait for their institution's coordinator, and a new coordinator registers a whole new institution, which activates itself when they verify their email. The website owner has a separate **Platform Admin console** (`/platform`, own login and accounts, no institution) to manage institutions, coordinators and other admins.
+**Invitation-only structure:** only the website owner (**Platform Admin console**, `/platform`) can add an **institution**, its **faculties**, the **departments** under each faculty, and invite **one coordinator per department** (and optionally an institution-level coordinator) by email. Coordinators never sign up themselves: they open the emailed link and choose their own password. Students and supervisors sign up by choosing **institution > faculty > department**; students verify their email, supervisors also wait for their department's coordinator. A department coordinator sees only their own department. Proposals, reports, repository files and chat attachments (PDF/images) can be **viewed in a pop-up viewer** or downloaded.
 
 **Many institutions, one installation:** every institution is a separate workspace (users, departments, projects, rubrics, settings, audit logs). The data is separated automatically in the database layer, so one college can never see another's data.
 
@@ -32,7 +32,7 @@ JWT in an HttpOnly cookie, CSRF header guard, bcrypt passwords, role checks on e
 - [x] Notifications (live), deadline reminders (hourly), announcements
 - [x] Rubrics, supervisor and external evaluation, publishing results, re-open with reason
 - [x] Coordinator: users, departments, terms, groups, assignment, analytics + CSV, settings, audit, backup info
-- [x] One login/register page with role picker; supervisor approval; coordinator setup code
+- [x] One login/register page with role picker; supervisor approval; admin-invited coordinators (set-password link)
 - [x] Similar-project (duplicate idea) warning, calendar, PDF evaluation report and PDF analytics
 - [x] "What to do next" checklists, shorter menus and a Help page per role
 - [x] Responsive (375-1440 px) and keyboard accessible UI

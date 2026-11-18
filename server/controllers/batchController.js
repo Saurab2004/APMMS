@@ -2,15 +2,14 @@ import { Batch, AcademicTerm, Department, User, ProjectGroup, Project } from '..
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, isId, idStr } from '../utils/helpers.js';
 import { audit } from '../services/audit.js';
-
-const FINISHED = ['evaluated', 'completed', 'archived'];
+import { moveBatchToTerm } from '../services/batches.js';
 
 const shape = (b, counts) => ({ ...(b.toObject ? b.toObject() : b), students: counts?.students?.get(idStr(b._id)) || 0, groups: counts?.groups?.get(idStr(b._id)) || 0 });
 
-async function loadBatch(id) {
+async function loadBatch(id, req) {
   if (!isId(id)) throw new AppError('Batch not found', 404);
   const batch = await Batch.findById(id);
-  if (!batch) throw new AppError('Batch not found', 404);
+  if (!batch || (req?.deptScope && idStr(batch.department) !== idStr(req.deptScope))) throw new AppError('Batch not found', 404);
   return batch;
 }
 
@@ -25,6 +24,7 @@ async function checkTerm(termId) {
 export const listBatches = asyncHandler(async (req, res) => {
   const filter = {};
   if (isId(req.query.department)) filter.department = req.query.department;
+  if (req.deptScope) filter.department = req.deptScope;
   const coordinator = req.user.role === 'coordinator';
   if (!coordinator || req.query.all !== '1') filter.status = 'active';
   const items = await Batch.find(filter).populate('department', 'name code').populate('term', 'name academicYear semester').sort({ intakeYear: -1, name: 1 });
@@ -41,7 +41,8 @@ export const listBatches = asyncHandler(async (req, res) => {
 });
 
 export const createBatch = asyncHandler(async (req, res) => {
-  const { name, departmentId, intakeYear, termId, allowSignup, note } = req.body;
+  const { name, intakeYear, termId, allowSignup, note } = req.body;
+  const departmentId = req.deptScope ? String(req.deptScope) : req.body.departmentId;
   if (!(await Department.exists({ _id: departmentId, isActive: true }))) throw new AppError('Department not found', 422, { departmentId: 'Not found' });
   await checkTerm(termId);
   if (await Batch.exists({ department: departmentId, name })) throw new AppError('This department already has a batch with that name', 409, { name: 'Already used' });
@@ -51,7 +52,7 @@ export const createBatch = asyncHandler(async (req, res) => {
 });
 
 export const updateBatch = asyncHandler(async (req, res) => {
-  const batch = await loadBatch(req.params.id);
+  const batch = await loadBatch(req.params.id, req);
   const { name, intakeYear, allowSignup, note, status } = req.body;
   if (name !== undefined && name !== batch.name) {
     if (await Batch.exists({ department: batch.department, name, _id: { $ne: batch._id } })) throw new AppError('This department already has a batch with that name', 409, { name: 'Already used' });
@@ -71,35 +72,12 @@ export const updateBatch = asyncHandler(async (req, res) => {
 
 /** Put a whole batch into another term (for example Semester 7 -> Semester 8). Students follow; unfinished groups can follow too. */
 export const moveBatchTerm = asyncHandler(async (req, res) => {
-  const batch = await loadBatch(req.params.id);
+  const batch = await loadBatch(req.params.id, req);
   if (batch.status === 'completed') throw new AppError('This batch is completed. Re-open it first.', 409);
   const term = await checkTerm(req.body.termId);
   if (!term) throw new AppError('Choose a term', 422, { termId: 'Required' });
   if (!term.isActive) throw new AppError('That term is archived. Choose an active term.', 409, { termId: 'Archived' });
-  const moveGroups = req.body.moveGroups !== false;
-  const from = batch.term;
-  batch.term = term._id;
-  await batch.save();
-  await User.updateMany({ batch: batch._id, role: 'student' }, { $set: { term: term._id } });
-
-  let moved = 0;
-  let skipped = 0;
-  if (moveGroups && idStr(from) !== idStr(term._id)) {
-    const projects = await Project.find({ batch: batch._id, status: { $nin: FINISHED } }).select('group').lean();
-    for (const p of projects) {
-      const group = await ProjectGroup.findById(p.group);
-      if (!group || group.status !== 'active') continue;
-      try {
-        group.term = term._id;
-        await group.save();
-        await Project.updateOne({ _id: p._id }, { $set: { term: term._id } });
-        moved += 1;
-      } catch (err) {
-        if (err.code === 11000) skipped += 1; // another group in that term already has the same name
-        else throw err;
-      }
-    }
-  }
+  const { moved, skipped } = await moveBatchToTerm(batch, term, req.body.moveGroups !== false);
   await audit(req, { action: 'batch.term_changed', entityType: 'Batch', entityId: batch._id, summary: `Moved batch ${batch.name} to ${term.name} (${moved} groups moved, ${skipped} skipped)` });
   ok(res, { batch, movedGroups: moved, skippedGroups: skipped });
 });
@@ -108,6 +86,7 @@ export const moveBatchTerm = asyncHandler(async (req, res) => {
 export const workload = asyncHandler(async (req, res) => {
   const filter = {};
   if (isId(req.query.department)) filter.department = req.query.department;
+  if (req.deptScope) filter.department = req.deptScope;
   const supervisors = await User.find({ role: 'supervisor', isActive: true, ...filter }).select('name email department maxProjects').populate('department', 'name').sort('name').lean();
   const rows = await Project.aggregate([
     { $match: { supervisor: { $in: supervisors.map((s) => s._id) }, status: { $nin: ['archived', 'completed'] } } },

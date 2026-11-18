@@ -49,3 +49,9 @@ User ─< ProjectGroup (members) ── 1 Project ─< Proposal ─< ProposalVer
 Project ─< ProgressReport ─< ReportVersion ─< ReportReview
 Project ─< Milestone, InteractionLog, Meeting, FeedbackThread ─< FeedbackComment
 Project ─< Evaluation >─ EvaluationRubric;  ExternalEvaluatorAssignment links evaluator, rubric and projects.
+
+## Faculties and department coordinators
+- **Faculty** (`name`, `code`, `isActive`; unique per institution+name). **Department.faculty** references it (required for new departments; existing departments are moved under a faculty called "General" by the startup migration).
+- **User.coordinatorLevel**: `institution` (a missing value counts as this) or `department`; a department coordinator also has `department` and is limited to it. One active coordinator per department.
+- **User.invitePending / invitedAt**: set when a coordinator is invited; cleared when they choose a password from the emailed link (which also verifies the email).
+- **Batch.term** is how terms and batches link; a term form can pass `batchIds` to link several active batches at once.
