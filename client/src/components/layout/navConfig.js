@@ -76,6 +76,7 @@ export const NAV = {
       { to: '/coordinator/evaluators', label: 'External evaluators', icon: BookOpenCheck },
     ] },
     { title: 'Setup & system', items: [
+      { to: '/coordinator/structure', label: 'Faculties & departments', icon: Building2 },
       { to: '/coordinator/departments', label: 'Departments', icon: Building2 },
       { to: '/coordinator/batches', label: 'Batches', icon: Layers },
       { to: '/coordinator/academic', label: 'Academic terms', icon: GraduationCap },
@@ -98,7 +99,7 @@ export const NAV = {
 export const ROLE_LABEL = { student: 'Student', supervisor: 'Supervisor', coordinator: 'Coordinator', evaluator: 'External evaluator' };
 
 /** The sidebar for one user. */
-const INSTITUTION_ONLY = ['/coordinator/departments', '/coordinator/academic', '/coordinator/settings', '/coordinator/audit', '/coordinator/system'];
+const INSTITUTION_ONLY = ['/coordinator/structure', '/coordinator/departments', '/coordinator/settings', '/coordinator/audit', '/coordinator/system'];
 
 export function navFor(user) {
   const groups = NAV[user.role] || [];

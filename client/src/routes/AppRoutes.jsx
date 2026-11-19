@@ -46,6 +46,7 @@ import { PlatformChangePassword, PlatformSetup } from '../pages/platform/Platfor
 import { PlatformInstitutionDetail, PlatformInstitutions, PlatformOverview } from '../pages/platform/PlatformPages.jsx';
 import { PlatformAccount, PlatformAdmins, PlatformAudit, PlatformCoordinators, PlatformHealth, PlatformSettings } from '../pages/platform/PlatformPages2.jsx';
 import { AcademicStructurePage, DepartmentsPage } from '../pages/coordinator/AcademicPages.jsx';
+import StructurePage from '../pages/coordinator/StructurePage.jsx';
 import BatchesPage from '../pages/coordinator/BatchesPage.jsx';
 import GroupsAdminPage from '../pages/coordinator/GroupsAdminPage.jsx';
 import { CoordinatorProjectsPage, SupervisorAssignmentPage } from '../pages/coordinator/ProjectPages.jsx';
@@ -160,6 +161,7 @@ export default function AppRoutes() {
           <Route index element={<CoordinatorDashboard />} />
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="users" element={<UsersPage />} />
+          <Route path="structure" element={<StructurePage />} />
           <Route path="departments" element={<DepartmentsPage />} />
           <Route path="academic" element={<AcademicStructurePage />} />
           <Route path="batches" element={<BatchesPage />} />

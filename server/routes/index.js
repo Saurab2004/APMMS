@@ -148,7 +148,10 @@ const facultyRules = (req) => ({ name: { required: req, min: 2, max: 120 }, code
 r.get('/faculties', any, academic.listFaculties);
 r.post('/faculties', institutionCoordinator, validate(facultyRules(true)), academic.createFaculty);
 r.patch('/faculties/:id', institutionCoordinator, validate(facultyRules(false)), academic.updateFaculty);
+r.get('/structure', institutionCoordinator, academic.getStructure);
+r.delete('/faculties/:id', institutionCoordinator, academic.deleteFaculty);
 r.get('/departments', any, academic.listDepartments);
+r.delete('/departments/:id', institutionCoordinator, academic.deleteDepartment);
 r.post('/departments', institutionCoordinator, validate(depRules(true)), academic.createDepartment);
 r.patch('/departments/:id', institutionCoordinator, validate(depRules(false)), academic.updateDepartment);
 r.post('/departments/:id/coordinator', institutionCoordinator, validate({ name: { required: true, min: 2, max: 120 }, email: S.email }), academic.inviteDepartmentCoordinator);
@@ -167,8 +170,8 @@ const termRules = (req) => ({
   batchIds: { type: 'array', maxItems: 200, of: { type: 'objectId' } },
 });
 r.get('/academic-terms', any, academic.listTerms);
-r.post('/academic-terms', institutionCoordinator, validate(termRules(true)), academic.createTerm);
-r.patch('/academic-terms/:id', institutionCoordinator, validate(termRules(false)), academic.updateTerm);
+r.post('/academic-terms', coordinator, validate(termRules(true)), academic.createTerm);
+r.patch('/academic-terms/:id', coordinator, validate(termRules(false)), academic.updateTerm);
 
 // Batches: one intake of one department; each points at the term it works in now.
 r.get('/batches', any, batches.listBatches);
@@ -453,6 +456,8 @@ r.get('/platform/institutions/:id/structure', padmin, platform.getStructure);
 r.post('/platform/institutions/:id/faculties', padmin, validate({ name: { required: true, min: 2, max: 120 }, code: { max: 12 }, description: { max: 500 } }), platform.createFacultyFor);
 r.patch('/platform/faculties/:id', padmin, validate({ name: { min: 2, max: 120 }, code: { max: 12 }, description: { max: 500 }, isActive: { type: 'boolean' } }), platform.updateFacultyOf);
 r.post('/platform/institutions/:id/departments', padmin, validate({ name: { required: true, min: 2, max: 120 }, code: { min: 2, max: 12 }, facultyId: S.id('Faculty', true), description: { max: 500 } }), platform.createDepartmentFor);
+r.delete('/platform/faculties/:id', padmin, platform.deleteFacultyOf);
+r.delete('/platform/departments/:id', padmin, platform.deleteDepartmentOf);
 r.patch('/platform/departments/:id', padmin, validate({ name: { min: 2, max: 120 }, code: { min: 2, max: 12 }, facultyId: S.id('Faculty'), description: { max: 500 }, isActive: { type: 'boolean' } }), platform.updateDepartmentOf);
 r.post('/platform/institutions/:id/coordinators', padmin, validate({ name: NAME, email: S.email, level: { type: 'enum', values: ['institution', 'department'] }, departmentId: S.id('Department') }), platform.inviteCoordinatorFor);
 r.get('/platform/institutions/:id', padmin, platform.getInstitution);

@@ -1,3 +1,4 @@
+import BrandMark from '../../components/common/BrandMark.jsx';
 import { GraduationCap, ShieldCheck, FileCheck2, MessagesSquare, Activity } from 'lucide-react';
 
 export default function AuthShell({ children }) {
@@ -5,7 +6,7 @@ export default function AuthShell({ children }) {
     <div className="auth">
       <aside className="auth-aside">
         <div className="row" style={{ gap: 10 }}>
-          <span className="brand-mark" style={{ background: 'rgba(255,255,255,.18)' }}><GraduationCap size={20} /></span>
+          <BrandMark size={20} style={{ background: 'rgba(255,255,255,.18)' }} />
           <strong style={{ fontSize: '1.125rem' }}>APMMS</strong>
         </div>
         <div>

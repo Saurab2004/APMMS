@@ -1,3 +1,4 @@
+import BrandMark from '../../components/common/BrandMark.jsx';
 import { useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Activity, Building2, ChevronDown, LayoutDashboard, LogOut, Menu, PanelLeftClose, PanelLeftOpen, ScrollText, Settings, ShieldCheck, UserCircle, UserCog, Users } from 'lucide-react';
@@ -59,7 +60,7 @@ export default function PlatformLayout() {
     <div className={cx('app', collapsed && 'collapsed', drawer && 'drawer-open')}>
       <aside className="sidebar" aria-label="Platform navigation">
         <Link to="/platform" className="sidebar-brand">
-          <span className="brand-mark"><ShieldCheck size={19} /></span>
+          <BrandMark />
           <span className="brand-text">APMMS<small>Platform admin</small></span>
         </Link>
         <nav className="sidebar-nav">

@@ -1,6 +1,6 @@
 // Faculties and departments of one institution. Used by the platform admin (any institution) and by the
 // institution coordinator (their own institution), so the rules are the same in both places.
-import { Faculty, Department, User } from '../models/index.js';
+import { Faculty, Department, User, Batch, ProjectGroup } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 
 const codeFrom = (name) => {
@@ -42,6 +42,31 @@ export async function changeDepartment(institutionId, id, patch) {
   if (patch.name !== undefined && patch.name !== dep.name && (await Department.exists({ institution: institutionId, name: patch.name, _id: { $ne: dep._id } }))) throw new AppError('This institution already has a department with that name', 409, { name: 'Already used' });
   for (const k of ['name', 'code', 'description', 'isActive']) if (patch[k] !== undefined) dep[k] = patch[k];
   await dep.save();
+  return dep;
+}
+
+/** Deletes a faculty. Only allowed while it has no departments (delete or move them first). */
+export async function removeFaculty(institutionId, id) {
+  const faculty = await Faculty.findOne({ _id: id, institution: institutionId });
+  if (!faculty) throw new AppError('Faculty not found', 404);
+  const n = await Department.countDocuments({ institution: institutionId, faculty: faculty._id });
+  if (n) throw new AppError(`This faculty still has ${n} department(s). Delete or move them first.`, 409);
+  await faculty.deleteOne();
+  return faculty;
+}
+
+/** Deletes a department that has no students, supervisors, batches or groups. Its coordinator account is removed with it. */
+export async function removeDepartment(institutionId, id) {
+  const dep = await Department.findOne({ _id: id, institution: institutionId });
+  if (!dep) throw new AppError('Department not found', 404);
+  const people = await User.countDocuments({ institution: institutionId, department: dep._id, role: { $in: ['student', 'supervisor'] }, deletedAt: null });
+  const batches = await Batch.countDocuments({ institution: institutionId, department: dep._id });
+  const groups = await ProjectGroup.countDocuments({ institution: institutionId, department: dep._id });
+  if (people || batches || groups) {
+    throw new AppError(`This department still has ${people} user(s), ${batches} batch(es) and ${groups} group(s), so it cannot be deleted. Deactivate it instead.`, 409);
+  }
+  await User.deleteMany({ institution: institutionId, role: 'coordinator', coordinatorLevel: 'department', department: dep._id });
+  await dep.deleteOne();
   return dep;
 }
 

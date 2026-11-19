@@ -1,3 +1,4 @@
+import BrandMark from '../common/BrandMark.jsx';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { GraduationCap, Menu, PanelLeftClose, PanelLeftOpen, Bell, LogOut, UserCircle, Settings, ChevronDown, Wifi, WifiOff } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function AppLayout() {
     <div className={cx('app', collapsed && 'collapsed', drawer && 'drawer-open')}>
       <aside className="sidebar" aria-label="Main navigation">
         <Link to={base} className="sidebar-brand">
-          <span className="brand-mark"><GraduationCap size={19} /></span>
+          <BrandMark />
           <span className="brand-text">APMMS<small>{user.institution?.name || 'Project management'}</small></span>
         </Link>
         <nav className="sidebar-nav">

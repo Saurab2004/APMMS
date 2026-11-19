@@ -165,6 +165,13 @@ test('admin adds an institution, faculty, departments and invites coordinators; 
   assert.equal((await S.founder.post(`/api/platform/coordinators/${inv.body.data.coordinator._id}/action`, { action: 'deactivate' })).status, 200);
   assert.equal((await S.founder.post(`/api/platform/institutions/${S.delta}/coordinators`, { name: 'Pat Physics', email: 'pat@delta.test', level: 'department', departmentId: d1._id })).status, 201);
 
+  // the admin can delete a department and then its faculty
+  assert.equal((await S.founder.del(`/api/platform/faculties/${fac._id}`)).status, 409, 'faculty still has departments');
+  assert.equal((await S.founder.del(`/api/platform/departments/${d2._id}`)).status, 200);
+  assert.equal((await S.founder.del(`/api/platform/departments/${d1._id}`)).status, 200);
+  assert.equal((await S.founder.del(`/api/platform/faculties/${fac._id}`)).status, 200);
+  assert.equal((await S.founder.get(`/api/platform/institutions/${S.delta}/structure`)).body.data.faculties.length, 0);
+
   // reset password: no password is shown; a link is emailed, sessions die
   const rp = await S.founder.post(`/api/platform/coordinators/${coordId}/action`, { action: 'reset-password' });
   assert.equal(rp.status, 200);

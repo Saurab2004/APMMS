@@ -7,7 +7,7 @@ import path from 'path';
 import mongoose from 'mongoose';
 import env from '../config/env.js';
 import { Institution, User, PlatformAdmin, PlatformAudit, ProjectGroup, Project, Department, Faculty, SystemSetting, INSTITUTION_TYPES } from '../models/index.js';
-import { addFaculty, changeFaculty, addDepartment, changeDepartment, structureOf } from '../services/structure.js';
+import { addFaculty, changeFaculty, addDepartment, changeDepartment, structureOf, removeFaculty, removeDepartment } from '../services/structure.js';
 import { inviteCoordinator, issueSetPasswordLink, roleText } from '../services/invitations.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, isId, sameId, passwordProblem, generateTempPassword, escapeRegex, parsePage, pageMeta } from '../utils/helpers.js';
@@ -480,4 +480,22 @@ export const putSettings = asyncHandler(async (req, res) => {
   const next = await updatePlatformSettings(req.body);
   await platformAudit(req.admin, { action: 'platform.settings_changed', summary: `${req.admin.name} changed platform settings (new institution sign-up: ${next.allowInstitutionRegistration ? 'on' : 'off'})` }, req.ip);
   ok(res, next);
+});
+
+export const deleteFacultyOf = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw notFound('Faculty');
+  const existing = await Faculty.findById(req.params.id).lean();
+  if (!existing) throw notFound('Faculty');
+  await removeFaculty(existing.institution, req.params.id);
+  await platformAudit(req.admin, { action: 'faculty.deleted', targetType: 'Institution', targetId: existing.institution, summary: `${req.admin.name} deleted faculty ${existing.name}` }, req.ip);
+  ok(res, { deleted: true });
+});
+
+export const deleteDepartmentOf = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw notFound('Department');
+  const existing = await Department.findById(req.params.id).lean();
+  if (!existing) throw notFound('Department');
+  await removeDepartment(existing.institution, req.params.id);
+  await platformAudit(req.admin, { action: 'department.deleted', targetType: 'Institution', targetId: existing.institution, summary: `${req.admin.name} deleted department ${existing.name}` }, req.ip);
+  ok(res, { deleted: true });
 });

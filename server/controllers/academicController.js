@@ -1,9 +1,10 @@
 import { Faculty, Department, AcademicTerm, Batch, User, ProjectGroup, Institution } from '../models/index.js';
 import { moveBatchToTerm } from '../services/batches.js';
-import { addFaculty, changeFaculty, addDepartment, changeDepartment } from '../services/structure.js';
+import { addFaculty, changeFaculty, addDepartment, changeDepartment, removeFaculty, removeDepartment, structureOf } from '../services/structure.js';
 import { inviteCoordinator, issueSetPasswordLink, roleText } from '../services/invitations.js';
 import { AppError } from '../utils/AppError.js';
 import { asyncHandler, ok, isId } from '../utils/helpers.js';
+import { emailConfigured } from '../services/mailer.js';
 import { audit } from '../services/audit.js';
 import { getSettings, updateSettings, SETTING_RULES } from '../services/settings.js';
 
@@ -30,6 +31,17 @@ export const updateFaculty = asyncHandler(async (req, res) => {
   const f = await changeFaculty(req.user.institution, req.params.id, req.body);
   await audit(req, { action: 'faculty.updated', entityType: 'Faculty', entityId: f._id, summary: `Updated faculty ${f.name}` });
   ok(res, f);
+});
+
+export const getStructure = asyncHandler(async (req, res) => {
+  ok(res, { ...(await structureOf(req.user.institution)), emailConfigured: emailConfigured() });
+});
+
+export const deleteFaculty = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw new AppError('Faculty not found', 404);
+  const f = await removeFaculty(req.user.institution, req.params.id);
+  await audit(req, { action: 'faculty.deleted', entityType: 'Faculty', entityId: f._id, summary: `Deleted faculty ${f.name}` });
+  ok(res, { deleted: true });
 });
 
 export const listDepartments = asyncHandler(async (req, res) => {
@@ -59,6 +71,13 @@ export const updateDepartment = asyncHandler(async (req, res) => {
   const dep = await changeDepartment(req.user.institution, req.params.id, req.body);
   await audit(req, { action: 'department.updated', entityType: 'Department', entityId: dep._id, summary: `Updated department ${dep.name}` });
   ok(res, dep);
+});
+
+export const deleteDepartment = asyncHandler(async (req, res) => {
+  if (!isId(req.params.id)) throw new AppError('Department not found', 404);
+  const d = await removeDepartment(req.user.institution, req.params.id);
+  await audit(req, { action: 'department.deleted', entityType: 'Department', entityId: d._id, summary: `Deleted department ${d.name}` });
+  ok(res, { deleted: true });
 });
 
 /** The institution coordinator invites the coordinator of a department (one per department). */
@@ -95,11 +114,11 @@ async function makeCurrentIfNeeded(term, wantCurrent) {
 }
 
 /** Links the chosen (active) batches to this term. Returns how many were linked and how many groups moved. */
-async function linkBatches(term, batchIds) {
+async function linkBatches(term, batchIds, deptScope) {
   const out = { batches: 0, groups: 0, skipped: 0 };
   if (!term.isActive || !Array.isArray(batchIds)) return out;
   for (const id of [...new Set(batchIds.map(String))]) {
-    const batch = await Batch.findOne({ _id: id, status: 'active' });
+    const batch = await Batch.findOne({ _id: id, status: 'active', ...(deptScope ? { department: deptScope } : {}) });
     if (!batch) continue;
     const r = await moveBatchToTerm(batch, term, true);
     out.batches += 1; out.groups += r.moved; out.skipped += r.skipped;
@@ -113,7 +132,7 @@ export const createTerm = asyncHandler(async (req, res) => {
   const term = new AcademicTerm({ ...rest, deadlines: { proposal: proposalDeadline, finalReport: finalReportDeadline } });
   await makeCurrentIfNeeded(term, isCurrent);
   await term.save();
-  const linked = await linkBatches(term, batchIds);
+  const linked = await linkBatches(term, batchIds, req.deptScope);
   await audit(req, { action: 'term.created', entityType: 'AcademicTerm', entityId: term._id, summary: `Created term ${term.name}${linked.batches ? ` with ${linked.batches} batch(es)` : ''}` });
   ok(res, { ...term.toObject(), linked }, 201);
 });
@@ -130,7 +149,7 @@ export const updateTerm = asyncHandler(async (req, res) => {
   if (isCurrent === false) term.isCurrent = false;
   await makeCurrentIfNeeded(term, isCurrent === true);
   await term.save();
-  const linked = await linkBatches(term, batchIds);
+  const linked = await linkBatches(term, batchIds, req.deptScope);
   await audit(req, { action: 'term.updated', entityType: 'AcademicTerm', entityId: term._id, summary: `Updated term ${term.name}${linked.batches ? ` and linked ${linked.batches} batch(es)` : ''}` });
   ok(res, { ...term.toObject(), linked });
 });

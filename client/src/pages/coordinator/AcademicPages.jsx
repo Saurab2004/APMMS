@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { Alert, Badge, Button, Card, IconButton, PageHeader, StatusBadge } from '../../components/common/ui.jsx';
 import DataTable from '../../components/tables/DataTable.jsx';
-import { Modal } from '../../components/common/Modal.jsx';
+import { Modal, ConfirmDialog } from '../../components/common/Modal.jsx';
 import { Check, Field, Input, Select, TextArea } from '../../components/forms/fields.jsx';
 import { useAsync } from '../../hooks/useAsync.js';
 import { useForm } from '../../hooks/useForm.js';
 import { useToast } from '../../context/ToastContext.jsx';
-import { errMsg, get, patch, post } from '../../services/api.js';
+import { errMsg, get, patch, post, del } from '../../services/api.js';
 import { fmtDate, toInputDate } from '../../utils/format.js';
 
 function DepartmentForm({ dep, onClose, onSaved }) {
@@ -39,6 +39,9 @@ function DepartmentForm({ dep, onClose, onSaved }) {
 export function DepartmentsPage() {
   const state = useAsync(() => get('/departments', { all: 1 }), []);
   const [form, setForm] = useState(null);
+  const [rm, setRm] = useState(null);
+  const toast = useToast();
+  const remove = async () => { try { await del(`/departments/${rm._id}`); toast.success('Department deleted'); setRm(null); state.reload(); } catch (e) { toast.error(errMsg(e)); setRm(null); } };
   const cols = [
     { key: 'name', header: 'Department', render: (d) => <><strong>{d.name}</strong><div className="muted small">{d.faculty?.name || 'No faculty'}</div></> },
     { key: 'coord', header: 'Coordinator', render: (d) => d.coordinator ? <>{d.coordinator.name}<div className="muted small">{d.coordinator.email}{d.coordinator.invitePending ? ' (invited)' : ''}</div></> : <span className="muted small">not invited yet</span> },
@@ -46,12 +49,13 @@ export function DepartmentsPage() {
     { key: 'students', header: 'Students' },
     { key: 'supervisors', header: 'Supervisors' },
     { key: 'isActive', header: 'Status', render: (d) => <StatusBadge status={d.isActive ? 'active' : 'inactive'} label={d.isActive ? 'Active' : 'Inactive'} /> },
-    { key: 'a', header: '', render: (d) => <IconButton icon={Pencil} label={`Edit ${d.name}`} onClick={() => setForm({ dep: d })} /> },
+    { key: 'a', header: '', render: (d) => <span className="row" style={{ gap: 4 }}><IconButton icon={Pencil} label={`Edit ${d.name}`} onClick={() => setForm({ dep: d })} /><IconButton icon={Trash2} label={`Delete ${d.name}`} onClick={() => setRm(d)} /></span> },
   ];
   return (
     <>
-      <PageHeader title="Departments" subtitle="Departments belong to faculties and each has one coordinator, invited by the APMMS administrator. Departments are deactivated rather than deleted." actions={<Button icon={Plus} onClick={() => setForm({})}>Add department</Button>} />
+      <PageHeader title="Departments" subtitle="Departments belong to faculties and each has one coordinator. Use Faculties & departments to invite coordinators. A department with no people can be deleted; others can be deactivated." actions={<Button icon={Plus} onClick={() => setForm({})}>Add department</Button>} />
       <DataTable columns={cols} rows={state.data} loading={state.loading} error={state.error} onRetry={state.reload} />
+      {rm && <ConfirmDialog title="Delete department?" danger confirmLabel="Delete" message={`Delete "${rm.name}" and its coordinator account? This only works when it has no students, supervisors, batches or groups.`} onConfirm={remove} onClose={() => setRm(null)} />}
       {form && <DepartmentForm dep={form.dep} onClose={() => setForm(null)} onSaved={() => { setForm(null); state.reload(); }} />}
     </>
   );
