@@ -24,7 +24,10 @@ export const listUsers = asyncHandler(async (req, res) => {
     const rx = new RegExp(escapeRegex(String(req.query.q).slice(0, 80)), 'i');
     filter.$or = [{ name: rx }, { email: rx }, { studentId: rx }];
   }
-  Object.assign(filter, scopeOf(req));
+  const scope = scopeOf(req);
+  if (scope.department) filter.department = scope.department;
+  // A department coordinator only ever sees students and supervisors; the role the caller asked for is kept.
+  if (scope.role && (!filter.role || !['student', 'supervisor'].includes(filter.role))) filter.role = scope.role;
   const sort = parseSort(req.query, ['name', 'email', 'role', 'createdAt', 'lastLoginAt'], { createdAt: -1 });
 
   const [items, total] = await Promise.all([
